@@ -35,10 +35,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Comparator;
 
-import org.json.JSONObject; // Added import
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TestProcessor implements EntityCollectionProcessor, EntityProcessor {
+
+    private static final Logger logger = LoggerFactory.getLogger(TestProcessor.class);
 
     private OData odata;
     private ServiceMetadata serviceMetadata;
@@ -51,28 +56,36 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
 
     @Override
     public void readEntityCollection(ODataRequest request, ODataResponse response, UriInfo uriInfo, ContentType responseFormat)
-            throws ODataApplicationException, SerializerException {
+            throws SerializerException {
         List<UriResource> resourcePaths = uriInfo.getUriResourceParts();
         UriResourceEntitySet uriResourceEntitySet = (UriResourceEntitySet) resourcePaths.get(0);
         EdmEntitySet edmEntitySet = uriResourceEntitySet.getEntitySet();
 
-    EntityCollection entitySet = getData(edmEntitySet, null, uriInfo);
+        try {
+            EntityCollection entitySet = getData(edmEntitySet, null, uriInfo);
 
-        ODataSerializer serializer = odata.createSerializer(responseFormat);
+            ODataSerializer serializer = odata.createSerializer(responseFormat);
 
-        EdmEntityType edmEntityType = edmEntitySet.getEntityType();
-        ContextURL contextUrl = ContextURL.with().entitySet(edmEntitySet).build();
+            EdmEntityType edmEntityType = edmEntitySet.getEntityType();
+            ContextURL contextUrl = ContextURL.with().entitySet(edmEntitySet).build();
 
-        final String id = request.getRawBaseUri() + "/" + edmEntitySet.getName();
-        EntityCollectionSerializerOptions opts = EntityCollectionSerializerOptions.with()
-                .id(id)
-                .contextURL(contextUrl)
-                .build();
-        SerializerResult serializerResult = serializer.entityCollection(serviceMetadata, edmEntityType, entitySet, opts);
+            final String id = request.getRawBaseUri() + "/" + edmEntitySet.getName();
+            EntityCollectionSerializerOptions opts = EntityCollectionSerializerOptions.with()
+                    .id(id)
+                    .contextURL(contextUrl)
+                    .build();
+            SerializerResult serializerResult = serializer.entityCollection(serviceMetadata, edmEntityType, entitySet, opts);
 
-        response.setContent(serializerResult.getContent());
-        response.setStatusCode(HttpStatusCode.OK.getStatusCode());
-        response.setHeader(HttpHeader.CONTENT_TYPE, responseFormat.toContentTypeString());
+            response.setContent(serializerResult.getContent());
+            response.setStatusCode(HttpStatusCode.OK.getStatusCode());
+            response.setHeader(HttpHeader.CONTENT_TYPE, responseFormat.toContentTypeString());
+        } catch (ODataApplicationException ex) {
+            response.setStatusCode(ex.getStatusCode());
+            response.setContent(new java.io.ByteArrayInputStream(
+                ("{\"error\":{\"code\":null,\"message\":\"" + ex.getMessage() + "\"}}").getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            ));
+            response.setHeader(HttpHeader.CONTENT_TYPE, "application/json");
+        }
     }
 
     @Override
@@ -83,26 +96,18 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
         EdmEntitySet edmEntitySet = uriResourceEntitySet.getEntitySet();
 
         List<UriParameter> keyPredicates = uriResourceEntitySet.getKeyPredicates();
-        EntityCollection entityCollection = null;
-        try {
-            entityCollection = getData(edmEntitySet, keyPredicates, uriInfo);
-        } catch (Exception ex) {
-            System.out.println("DEBUG: Exception in getData: " + ex.getMessage());
-            response.setStatusCode(HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode());
-            response.setContent(null);
-            return;
-        }
-        System.out.println("DEBUG: entityCollection size=" + (entityCollection != null ? entityCollection.getEntities().size() : 0));
+        EntityCollection entityCollection = getData(edmEntitySet, keyPredicates, uriInfo);
+        logger.debug("entityCollection size={}", (entityCollection != null ? entityCollection.getEntities().size() : 0));
         if (entityCollection == null || entityCollection.getEntities().isEmpty()) {
-            System.out.println("DEBUG: No entity found for key " + keyPredicates);
+            logger.debug("No entity found for key {}", keyPredicates);
             response.setStatusCode(HttpStatusCode.NOT_FOUND.getStatusCode());
             response.setContent(null);
             return;
         }
         Entity entity = entityCollection.getEntities().get(0);
-        System.out.println("DEBUG: Entity found: " + entity);
+        logger.debug("Entity found: {}", entity);
         for (Property prop : entity.getProperties()) {
-            System.out.println("DEBUG: Property " + prop.getName() + " = " + prop.getValue());
+            logger.debug("Property {} = {}", prop.getName(), prop.getValue());
         }
 
         ODataSerializer serializer = odata.createSerializer(responseFormat);
@@ -116,11 +121,11 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
         java.io.InputStream responseStream = null;
         try {
             contentStr = new String(contentStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            System.out.println("DEBUG: Serialized OData response: " + contentStr);
+            logger.debug("Serialized OData response: {}", contentStr);
             // Re-create InputStream for response
             responseStream = new java.io.ByteArrayInputStream(contentStr.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (java.io.IOException e) {
-            System.out.println("DEBUG: IOException reading OData response: " + e.getMessage());
+            logger.error("IOException reading OData response: {}", e.getMessage(), e);
             responseStream = serializerResult.getContent(); // fallback
         }
 
@@ -129,8 +134,12 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
         response.setHeader(HttpHeader.CONTENT_TYPE, responseFormat.toContentTypeString());
     }
 
-    private EntityCollection getData(EdmEntitySet edmEntitySet, List<UriParameter> keyParams, org.apache.olingo.server.api.uri.UriInfo uriInfo) {
+    private EntityCollection getData(EdmEntitySet edmEntitySet, List<UriParameter> keyParams, org.apache.olingo.server.api.uri.UriInfo uriInfo) throws org.apache.olingo.server.api.ODataApplicationException {
         EntityCollection productsCollection = new EntityCollection();
+        logger.debug("getData called: edmEntitySet={}, keyParams={}, uriInfo={}",
+            (edmEntitySet != null ? edmEntitySet.getName() : "null"),
+            (keyParams != null ? keyParams.toString() : "null"),
+            (uriInfo != null ? uriInfo.toString() : "null"));
         if (TestEdmProvider.ES_PRODUCTS_NAME.equals(edmEntitySet.getName())) {
             try (Connection conn = DatabaseHelper.getConnection()) {
                 StringBuilder sql = new StringBuilder("SELECT * FROM PRODUCTS");
@@ -144,26 +153,48 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                 String filterValue = null;
                 String orderByValue = null;
                 if (uriInfo.getFilterOption() != null) {
-                    filterValue = uriInfo.getFilterOption().getText();
+                    String rawFilterValue = uriInfo.getFilterOption().getText();
+                    logger.debug("Raw filter option text: {}", rawFilterValue);
+                    logger.debug("FilterOption class: {}", uriInfo.getFilterOption().getClass().getName());
+                    logger.debug("FilterOption toString: {}", uriInfo.getFilterOption().toString());
+                    try {
+                        filterValue = java.net.URLDecoder.decode(rawFilterValue, java.nio.charset.StandardCharsets.UTF_8.toString());
+                    } catch (Exception e) {
+                        logger.warn("Failed to decode filterValue: {}", rawFilterValue, e);
+                        filterValue = rawFilterValue;
+                    }
+                    logger.debug("Decoded filter option text: {}", filterValue);
                 }
                 if (uriInfo.getOrderByOption() != null) {
                     orderByValue = uriInfo.getOrderByOption().getText();
+                    logger.debug("Order by option text: {}", orderByValue);
                 }
-                // $filter (supports Price gt N and returns boolean)
+                Double filterPrice = null;
+                int paramCount = 0;
+
+                // $filter (supports Price gt N)
                 if (filterValue != null) {
-                    // Basic support for 'Price gt N'
                     java.util.regex.Matcher m = java.util.regex.Pattern.compile("Price\\s+gt\\s+(\\d+(\\.\\d+)?)").matcher(filterValue);
-                    if (m.matches()) {
-                        String priceStr = m.group(1);
+                    if (m.find()) {
+                        filterPrice = Double.parseDouble(m.group(1));
                         sql.append(hasWhere ? " AND " : " WHERE ");
-                        sql.append("Price > ").append(priceStr);
+                        sql.append("Price > ?");
                         hasWhere = true;
+                    } else {
+                        logger.warn("Unsupported filter expression: {}", filterValue);
+                        throw new org.apache.olingo.server.api.ODataApplicationException(
+                            "Unsupported filter expression",
+                            org.apache.olingo.commons.api.http.HttpStatusCode.BAD_REQUEST.getStatusCode(),
+                            java.util.Locale.ENGLISH
+                        );
                     }
                 }
+
                 // $orderby (supports Price desc)
                 if (orderByValue != null && orderByValue.equals("Price desc")) {
                     sql.append(" ORDER BY Price DESC");
                 }
+                
                 // $select (ignored, always returns all columns)
                 // $top/$skip
                 // TODO: Implement $top, $skip, $count, $expand using UriInfo if needed
@@ -174,10 +205,17 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                 // For now, these features are not implemented.
                 try (PreparedStatement stmt = conn.prepareStatement(sql.toString())) {
                     if (keyParams != null && !keyParams.isEmpty()) {
-                        stmt.setInt(1, Integer.parseInt(keyParams.get(0).getText()));
+                        paramCount++;
+                        stmt.setInt(paramCount, Integer.parseInt(keyParams.get(0).getText()));
+                    }
+                    if (filterPrice != null) {
+                        paramCount++;
+                        stmt.setDouble(paramCount, filterPrice);
                     }
                     ResultSet rs = stmt.executeQuery();
-                    System.out.println("DEBUG getData: Executing SQL: " + sql + ", param=" + (keyParams != null && !keyParams.isEmpty() ? keyParams.get(0).getText() : "none"));
+                    logger.debug("getData: Final SQL: {}", sql);
+                    logger.debug("getData: Executing SQL: {}, param={}", sql, (keyParams != null && !keyParams.isEmpty() ? keyParams.get(0).getText() : "none"));
+                    logger.debug("getData: FilterValue used: {}", filterValue);
                     boolean foundAny = false;
                     while (rs.next()) {
                         Entity product = new Entity()
@@ -193,15 +231,15 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                         // }
                         productsCollection.getEntities().add(product);
                         foundAny = true;
-                        System.out.println("DEBUG getData: Found row ID=" + rs.getInt("ID") + ", Name=" + rs.getString("Name") + ", Desc=" + rs.getString("Description"));
+                        logger.debug("getData: Found row ID={}, Name={}, Desc={}", rs.getInt("ID"), rs.getString("Name"), rs.getString("Description"));
                     }
                     if (!foundAny) {
-                        System.out.println("DEBUG getData: No rows found for SQL: " + sql);
+                        logger.debug("getData: No rows found for SQL: {}", sql);
                     }
                 }
+                // The sorting is now handled by the database, so this is not needed.
             } catch (SQLException e) {
-                System.out.println("DEBUG getData: SQLException: " + e.getMessage());
-                e.printStackTrace();
+                logger.error("getData: SQLException: {}", e.getMessage(), e);
                 throw new RuntimeException("Database error: " + e.getMessage(), e);
             }
         }
@@ -219,21 +257,21 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                 // DatabaseHelper.createTable(); // Removed call
                 java.io.InputStream bodyStream = request.getBody();
                 String jsonString = new String(bodyStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                System.out.println("DEBUG createEntity raw JSON: " + jsonString);
+                logger.debug("createEntity raw JSON: {}", jsonString);
                 org.json.JSONObject json = new org.json.JSONObject(jsonString);
                 int id = json.getInt("ID");
                 String name = json.getString("Name");
                 String desc = json.getString("Description");
                 double price = json.has("Price") ? json.getDouble("Price") : 0.0;
-                System.out.println("DEBUG createEntity parsed values: id=" + id + ", name=" + name + ", desc=" + desc + ", price=" + price);
-                String sql = "INSERT INTO PRODUCTS (ID, Name, Description, Price) VALUES (?, ?, ?, ?)"; // Changed to uppercase
+                logger.debug("createEntity parsed values: id={}, name={}, desc={}, price={}", id, name, desc, price);
+                String sql = "INSERT INTO PRODUCTS (ID, Name, Description, Price) VALUES (?, ?, ?, ?)";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setInt(1, id);
                     stmt.setString(2, name);
                     stmt.setString(3, desc);
-                    stmt.setDouble(4, price); // Added Price
+                    stmt.setDouble(4, price);
                     int rows = stmt.executeUpdate();
-                    System.out.println("DEBUG createEntity SQL rows affected: " + rows);
+                    logger.debug("createEntity SQL rows affected: {}", rows);
                 }
                 Entity entity = new Entity()
                         .addProperty(new Property(null, "ID", ValueType.PRIMITIVE, id))
@@ -249,6 +287,7 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                 response.setStatusCode(HttpStatusCode.CREATED.getStatusCode());
                 response.setHeader(HttpHeader.CONTENT_TYPE, responseFormat.toContentTypeString());
             } catch (Exception e) {
+                logger.error("Error creating entity: {}", e.getMessage(), e);
                 throw new ODataApplicationException("Error creating entity", 500, null);
             }
         }
@@ -268,7 +307,7 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                 java.io.InputStream bodyStream = request.getBody();
                 String jsonString = new String(bodyStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 JSONObject json = new JSONObject(jsonString);
-                System.out.println("DEBUG updateEntity raw JSON: " + jsonString);
+                logger.debug("updateEntity raw JSON: {}", jsonString);
                 // Partial update: fetch current values first
                 String currentName = null, currentDesc = null;
                 double currentPrice = 0.0;
@@ -284,7 +323,7 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                 String name = json.has("Name") ? json.getString("Name") : currentName;
                 String desc = json.has("Description") ? json.getString("Description") : currentDesc;
                 double price = json.has("Price") ? json.getDouble("Price") : currentPrice;
-                System.out.println("DEBUG updateEntity parsed values: name=" + name + ", desc=" + desc + ", price=" + price);
+                logger.debug("updateEntity parsed values: name={}, desc={}, price={}", name, desc, price);
                 String sql = "UPDATE PRODUCTS SET Name = ?, Description = ?, Price = ? WHERE ID = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setString(1, name);
@@ -292,21 +331,21 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                     stmt.setDouble(3, price);
                     stmt.setInt(4, id);
                     int rows = stmt.executeUpdate();
-                    System.out.println("DEBUG updateEntity SQL rows affected: " + rows);
+                    logger.debug("updateEntity SQL rows affected: {}", rows);
                 }
                 // After update, check if row exists
                 try (PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM PRODUCTS WHERE ID = ?")) {
                     checkStmt.setInt(1, id);
                     ResultSet rs = checkStmt.executeQuery();
                     if (rs.next()) {
-                        System.out.println("DEBUG updateEntity: Row exists after update for ID=" + id + ", Name=" + rs.getString("Name") + ", Desc=" + rs.getString("Description"));
+                        logger.debug("updateEntity: Row exists after update for ID={}, Name={}, Desc={}", id, rs.getString("Name"), rs.getString("Description"));
                     } else {
-                        System.out.println("DEBUG updateEntity: Row NOT FOUND after update for ID=" + id);
+                        logger.debug("updateEntity: Row NOT FOUND after update for ID={}", id);
                     }
                 }
                 response.setStatusCode(HttpStatusCode.NO_CONTENT.getStatusCode());
             } catch (Exception e) {
-                System.out.println("DEBUG updateEntity exception: " + e.getMessage());
+                logger.error("Error updating entity: {}", e.getMessage(), e);
                 throw new ODataApplicationException("Error updating entity: " + e.getMessage(), 500, null);
             }
         }
@@ -323,13 +362,14 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
             int id = Integer.parseInt(keyPredicates.get(0).getText());
             try (Connection conn = DatabaseHelper.getConnection()) {
                 // DatabaseHelper.createTable(); // Removed call
-                String sql = "DELETE FROM PRODUCTS WHERE ID = ?"; // Changed to uppercase
+                String sql = "DELETE FROM PRODUCTS WHERE ID = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setInt(1, id);
                     stmt.executeUpdate();
                 }
                 response.setStatusCode(HttpStatusCode.NO_CONTENT.getStatusCode());
             } catch (Exception e) {
+                logger.error("Error deleting entity: {}", e.getMessage(), e);
                 throw new ODataApplicationException("Error deleting entity", 500, null);
             }
         }

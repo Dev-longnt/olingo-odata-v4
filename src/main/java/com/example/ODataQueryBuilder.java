@@ -1,5 +1,9 @@
 package com.example;
 
+import org.apache.olingo.server.api.debug.DebugSupport;
+
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -9,18 +13,23 @@ public class ODataQueryBuilder {
 
     private final Map<String, String> queryOptions = new LinkedHashMap<>();
 
+    public ODataQueryBuilder enableDebug() {
+        queryOptions.put(DebugSupport.ODATA_DEBUG_QUERY_PARAMETER, "json");
+        return this;
+    }
+
     public ODataQueryBuilder filter(String filterExpression) {
-        queryOptions.put("$filter", encode(filterExpression));
+        queryOptions.put("$filter", filterExpression);
         return this;
     }
 
     public ODataQueryBuilder orderBy(String orderByExpression) {
-        queryOptions.put("$orderby", encode(orderByExpression));
+        queryOptions.put("$orderby", orderByExpression);
         return this;
     }
 
     public ODataQueryBuilder select(String selectFields) {
-        queryOptions.put("$select", encode(selectFields));
+        queryOptions.put("$select", selectFields);
         return this;
     }
 
@@ -38,17 +47,20 @@ public class ODataQueryBuilder {
         StringBuilder sb = new StringBuilder(baseUrl);
         if (!queryOptions.isEmpty()) {
             sb.append("?");
-            queryOptions.forEach((key, value) -> sb.append(key).append("=").append(value).append("&"));
+            queryOptions.forEach((key, value) -> {
+                try {
+                    String encodedValue = URLEncoder.encode(value, StandardCharsets.UTF_8.toString()).replace("+", "%20");
+                    sb.append(key).append("=").append(encodedValue).append("&");
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to encode OData value", e);
+                }
+            });
             sb.setLength(sb.length() - 1); // Remove trailing '&'
         }
         return sb.toString();
     }
 
-    private String encode(String value) {
-        try {
-            return URLEncoder.encode(value, StandardCharsets.UTF_8.toString()).replace("+", "%20");
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to encode OData value", e);
-        }
+    public URI buildUri(String baseUrl) throws URISyntaxException {
+        return new URI(build(baseUrl));
     }
 }

@@ -1,48 +1,55 @@
 package com.example.integration;
 
-import com.example.ODataServlet;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import java.util.List;
-import java.util.ArrayList;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
-import com.example.util.DbUnitTestUtils;
 
+import org.dbunit.Assertion;
 import org.dbunit.database.DatabaseConnection;
 import org.dbunit.database.IDatabaseConnection;
+import org.dbunit.dataset.DefaultTable;
 import org.dbunit.dataset.IDataSet;
+import org.dbunit.dataset.ITable;
 import org.dbunit.dataset.xml.FlatXmlDataSetBuilder;
 import org.dbunit.operation.DatabaseOperation;
-import org.dbunit.dataset.ITable;
-import org.dbunit.dataset.DefaultTable;
-import org.dbunit.Assertion;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import com.example.OdataApplication;
+import com.example.util.DbUnitTestUtils;
+import com.example.util.ODataClient;
 
+@SpringBootTest(classes = OdataApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public class ODataIntegrationTest {
-    // Utility methods moved to DbUnitTestUtils
 
-    private static Server server;
-    private static String BASE_URL = "http://localhost:8080/ODataServlet/";
+    @LocalServerPort
+    private int port;
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    private String BASE_URL;
+    private ODataClient odataClient;
     private static Connection h2Connection;
     private static IDatabaseConnection dbUnitConnection;
-
 
     @BeforeAll
     static void setUpAll() throws Exception {
@@ -62,70 +69,47 @@ public class ODataIntegrationTest {
         dbUnitConnection = new DatabaseConnection(h2Connection, "PUBLIC"); // Explicitly set schema
 
         // Create tables
-        // Ensure tables exist before DBUnit operations
         try (Statement stmt = h2Connection.createStatement()) {
             stmt.execute("CREATE TABLE IF NOT EXISTS PRODUCTS (ID INT PRIMARY KEY, Name VARCHAR(255), Description VARCHAR(255), Price DOUBLE)");
             stmt.execute("CREATE TABLE IF NOT EXISTS CATEGORIES (ID INT PRIMARY KEY, Name VARCHAR(255))");
         }
-        InputStream is = ODataIntegrationTest.class.getClassLoader().getResourceAsStream("dataset.xml");
-        IDataSet dataSet = new FlatXmlDataSetBuilder().build(is);
-        DatabaseOperation.CLEAN_INSERT.execute(dbUnitConnection, dataSet);
-
-        // Setup Jetty Server
-        server = new Server(8080);
-        ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
-        context.setContextPath("/");
-        server.setHandler(context);
-
-        ServletHolder servletHolder = new ServletHolder(new ODataServlet());
-        context.addServlet(servletHolder, "/ODataServlet/*");
-
-        server.start();
-    }
-
-    @BeforeEach
-    void setUp() throws Exception {
-        // Clean and insert data using DBUnit
-        InputStream is = getClass().getClassLoader().getResourceAsStream("dataset.xml");
-        IDataSet dataSet = new FlatXmlDataSetBuilder().build(is);
-        DatabaseOperation.CLEAN_INSERT.execute(dbUnitConnection, dataSet);
-
-        // Restart Jetty server to reload servlet after DBUnit setup
-        if (server != null && server.isRunning()) {
-            server.stop();
-            server.join();
-        }
-        server.start();
     }
 
     @AfterAll
     static void tearDownAll() throws Exception {
-        // Shutdown Jetty Server
-        server.stop();
-        server.join();
-
         // Close H2 Database Connection
         if (h2Connection != null) {
             h2Connection.close();
         }
     }
 
+    @BeforeEach
+    void setUp() throws Exception {
+        BASE_URL = "http://localhost:" + port + "/odata/";
+        odataClient = new ODataClient(BASE_URL, restTemplate.getRestTemplate(), new com.example.ODataQueryBuilder());
+        // Clean and insert data using DBUnit
+        InputStream is = getClass().getClassLoader().getResourceAsStream("dataset.xml");
+        IDataSet dataSet = new FlatXmlDataSetBuilder().build(is);
+        DatabaseOperation.CLEAN_INSERT.execute(dbUnitConnection, dataSet);
+    }
+
+    private ResponseEntity<String> executeJsonRequest(String url, HttpMethod method, String jsonPayload) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> request = new HttpEntity<>(jsonPayload, headers);
+        return restTemplate.exchange(url, method, request, String.class);
+    }
+
     @Test
     void testReadEntityCollection() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        String url = new com.example.ODataQueryBuilder().build(BASE_URL + "Products");
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
+        URI uri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products");
+        ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("Products"));
+        assertTrue(response.getBody().contains("Notebook"));
 
-        assertEquals(200, response.statusCode());
-        assertTrue(response.body().contains("Products"));
-        assertTrue(response.body().contains("Notebook"));
-
-        org.json.JSONObject root = new org.json.JSONObject(response.body());
+        org.json.JSONObject root = new org.json.JSONObject(response.getBody());
         org.json.JSONArray productsJson = root.getJSONArray("value");
         ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
         DefaultTable apiProductsTable = DbUnitTestUtils.buildTableFromJson(productsJson, dbProductsTable);
@@ -136,20 +120,14 @@ public class ODataIntegrationTest {
 
     @Test
     void testReadSingleEntity() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        String url = new com.example.ODataQueryBuilder().build(BASE_URL + "Products(1)");
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
+        URI uri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products(1)");
+        ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("Notebook"));
+        assertTrue(response.getBody().contains("\"Price\":"));
 
-        assertEquals(200, response.statusCode());
-        assertTrue(response.body().contains("Notebook"));
-        assertTrue(response.body().contains("\"Price\":"));
-
-        org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(response.body());
+        org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(response.getBody());
         ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
         DefaultTable apiProductTable = DbUnitTestUtils.buildTableFromJsonObject(productJson, dbProductsTable);
 
@@ -157,21 +135,16 @@ public class ODataIntegrationTest {
 
         Assertion.assertEquals(dbFilteredTable, apiProductTable);
     }
+
     @Test
     void testCreateEntity() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
         String json = "{\"ID\":11,\"Name\":\"Camera\",\"Description\":\"Digital camera\",\"Price\":400.00}";
-        String url = new com.example.ODataQueryBuilder().build(BASE_URL + "Products");
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(201, response.statusCode());
-        assertTrue(response.body().contains("Camera"));
+        ResponseEntity<String> response = executeJsonRequest(BASE_URL + "Products", HttpMethod.POST, json);
 
-        org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(response.body());
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertTrue(response.getBody().contains("Camera"));
+
+        org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(response.getBody());
         ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
         DefaultTable apiProductTable = DbUnitTestUtils.buildTableFromJsonObject(productJson, dbProductsTable);
 
@@ -182,27 +155,17 @@ public class ODataIntegrationTest {
 
     @Test
     void testUpdateEntity() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
         String json = "{\"Name\":\"Notebook Pro\",\"Price\":1500.00}";
-        String url = new com.example.ODataQueryBuilder().build(BASE_URL + "Products(1)");
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .method("PATCH", HttpRequest.BodyPublishers.ofString(json))
-                .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(204, response.statusCode());
+        ResponseEntity<String> response = executeJsonRequest(BASE_URL + "Products(1)", HttpMethod.PUT, json);
 
-        String getUrl = new com.example.ODataQueryBuilder().build(BASE_URL + "Products(1)");
-        HttpRequest getRequest = HttpRequest.newBuilder()
-                .uri(URI.create(getUrl))
-                .GET()
-                .build();
-        HttpResponse<String> getResponse = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
-        assertTrue(getResponse.body().contains("Notebook Pro"));
-        assertTrue(getResponse.body().contains("1500"));
+        assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
 
-        org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(getResponse.body());
+        URI getUri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products(1)");
+        ResponseEntity<String> getResponse = restTemplate.getForEntity(getUri, String.class);
+        assertTrue(getResponse.getBody().contains("Notebook Pro"));
+        assertTrue(getResponse.getBody().contains("1500"));
+
+        org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(getResponse.getBody());
         ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
         DefaultTable apiProductTable = DbUnitTestUtils.buildTableFromJsonObject(productJson, dbProductsTable);
 
@@ -213,23 +176,11 @@ public class ODataIntegrationTest {
 
     @Test
     void testDeleteEntity() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        String url = new com.example.ODataQueryBuilder().build(BASE_URL + "Products(2)");
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .DELETE()
-                .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(204, response.statusCode());
+        odataClient.delete("Products", 2).execute();
 
-        // Verify deletion by GET and compare API vs DB
-        String getUrl = new com.example.ODataQueryBuilder().build(BASE_URL + "Products(2)");
-        HttpRequest getRequest = HttpRequest.newBuilder()
-                .uri(URI.create(getUrl))
-                .GET()
-                .build();
-        HttpResponse<String> getResponse = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
-        assertEquals(404, getResponse.statusCode());
+        URI getUri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products(2)");
+        ResponseEntity<String> getResponse = restTemplate.getForEntity(getUri, String.class);
+        assertEquals(HttpStatus.NOT_FOUND, getResponse.getStatusCode());
 
         // DBUnit validation: Tablet should not exist in DB
         ITable tabletTable = dbUnitConnection.createQueryTable("tablet_check",
@@ -239,21 +190,19 @@ public class ODataIntegrationTest {
 
     @Test
     void testFilterAndOrderBy() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        String url = new com.example.ODataQueryBuilder()
+        ResponseEntity<String> response = odataClient.get("Products")
             .filter("Price gt 500")
             .orderBy("Price desc")
-            .build(BASE_URL + "Products");
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, response.statusCode());
-        assertTrue(response.body().contains("Notebook"));
-        assertTrue(response.body().contains("Smartphone"));
+            .execute();
 
-        org.json.JSONObject root = new org.json.JSONObject(response.body());
+        System.out.println("Response Status Code: " + response.getStatusCode());
+        System.out.println("Response Body: " + response.getBody());
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("Products"));
+        assertTrue(response.getBody().contains("Notebook"));
+
+        org.json.JSONObject root = new org.json.JSONObject(response.getBody());
         org.json.JSONArray productsJson = root.getJSONArray("value");
         ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
         DefaultTable apiProductsTable = DbUnitTestUtils.buildTableFromJson(productsJson, dbProductsTable);
@@ -263,6 +212,11 @@ public class ODataIntegrationTest {
             row -> row[3] != null && ((Double)row[3]) > 500,
             (a, b) -> Double.compare((Double)b[3], (Double)a[3])
         );
+
+        System.out.println("\n--- API Products Table ---");
+        DbUnitTestUtils.printTable(apiProductsTable);
+        System.out.println("\n--- DB Filtered Table ---");
+        DbUnitTestUtils.printTable(dbFilteredTable);
 
         Assertion.assertEquals(dbFilteredTable, apiProductsTable);
     }

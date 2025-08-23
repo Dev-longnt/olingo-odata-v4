@@ -73,4 +73,13 @@ public class DbUnitTestUtils {
         }
         return table;
     }
+
+    public static void printTable(ITable table) throws Exception {
+        for (int i = 0; i < table.getRowCount(); i++) {
+            for (int j = 0; j < table.getTableMetaData().getColumns().length; j++) {
+                System.out.print(table.getTableMetaData().getColumns()[j].getColumnName() + ": " + table.getValue(i, table.getTableMetaData().getColumns()[j].getColumnName()) + "\t");
+            }
+            System.out.println();
+        }
+    }
 }
