@@ -40,6 +40,10 @@ public class ODataClient {
         return new DeleteRequest(entitySet, key, this.baseUrl, this.restTemplate);
     }
 
+    public ResponseEntity<String> getMetadata() {
+        return restTemplate.getForEntity(baseUrl + "$metadata", String.class);
+    }
+
     private String buildEntityUrl(String entitySet, Object key) {
         return baseUrl + String.format("%s(%s)", entitySet, key.toString());
     }

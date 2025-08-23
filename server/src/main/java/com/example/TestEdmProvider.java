@@ -15,11 +15,16 @@ import java.util.Collections;
 import java.util.List;
 
 public class TestEdmProvider extends CsdlAbstractEdmProvider {
+    // Category entity and entity set
+    // Remove duplicate Category fields here (lines 24-28)
 
     public static final String NAMESPACE = "OData.Test";
     public static final String ET_PRODUCT_NAME = "Product";
+    public static final String ET_CATEGORY_NAME = "Category";
     public static final FullQualifiedName ET_PRODUCT_FQN = new FullQualifiedName(NAMESPACE, ET_PRODUCT_NAME);
+    public static final FullQualifiedName ET_CATEGORY_FQN = new FullQualifiedName(NAMESPACE, ET_CATEGORY_NAME);
     public static final String ES_PRODUCTS_NAME = "Products";
+    public static final String ES_CATEGORIES_NAME = "Categories";
     public static final String CONTAINER_NAME = "Container";
     public static final FullQualifiedName CONTAINER_FQN = new FullQualifiedName(NAMESPACE, CONTAINER_NAME);
 
@@ -34,10 +39,30 @@ public class TestEdmProvider extends CsdlAbstractEdmProvider {
             CsdlPropertyRef propertyRef = new CsdlPropertyRef();
             propertyRef.setName("ID");
 
+            // Navigation property: Category
+            org.apache.olingo.commons.api.edm.provider.CsdlNavigationProperty navCategory =
+                new org.apache.olingo.commons.api.edm.provider.CsdlNavigationProperty()
+                    .setName("Category")
+                    .setType(ET_CATEGORY_FQN)
+                    .setNullable(true)
+                    .setPartner("Products")
+                    .setContainsTarget(false);
+
             return new CsdlEntityType()
                     .setName(ET_PRODUCT_NAME)
                     .setKey(Collections.singletonList(propertyRef))
-                    .setProperties(List.of(id, name, description, price));
+                    .setProperties(List.of(id, name, description, price))
+                    .setNavigationProperties(List.of(navCategory));
+        }
+        if (entityTypeName.equals(ET_CATEGORY_FQN)) {
+            CsdlProperty id = new CsdlProperty().setName("ID").setType(EdmPrimitiveTypeKind.Int32.getFullQualifiedName());
+            CsdlProperty name = new CsdlProperty().setName("Name").setType(EdmPrimitiveTypeKind.String.getFullQualifiedName());
+            CsdlPropertyRef propertyRef = new CsdlPropertyRef();
+            propertyRef.setName("ID");
+            return new CsdlEntityType()
+                    .setName(ET_CATEGORY_NAME)
+                    .setKey(Collections.singletonList(propertyRef))
+                    .setProperties(List.of(id, name));
         }
         return null;
     }
@@ -45,9 +70,20 @@ public class TestEdmProvider extends CsdlAbstractEdmProvider {
     @Override
     public CsdlEntitySet getEntitySet(FullQualifiedName entityContainer, String entitySetName) {
         if (entityContainer.equals(CONTAINER_FQN) && entitySetName.equals(ES_PRODUCTS_NAME)) {
+            // Products entity set, navigation to Category
+            org.apache.olingo.commons.api.edm.provider.CsdlNavigationPropertyBinding navBinding =
+                new org.apache.olingo.commons.api.edm.provider.CsdlNavigationPropertyBinding()
+                    .setPath("Category")
+                    .setTarget(ES_CATEGORIES_NAME);
             return new CsdlEntitySet()
                     .setName(ES_PRODUCTS_NAME)
-                    .setType(ET_PRODUCT_FQN);
+                    .setType(ET_PRODUCT_FQN)
+                    .setNavigationPropertyBindings(List.of(navBinding));
+        }
+        if (entityContainer.equals(CONTAINER_FQN) && entitySetName.equals(ES_CATEGORIES_NAME)) {
+            return new CsdlEntitySet()
+                    .setName(ES_CATEGORIES_NAME)
+                    .setType(ET_CATEGORY_FQN);
         }
         return null;
     }
@@ -56,14 +92,20 @@ public class TestEdmProvider extends CsdlAbstractEdmProvider {
     public CsdlEntityContainer getEntityContainer() {
         return new CsdlEntityContainer()
                 .setName(CONTAINER_NAME)
-                .setEntitySets(Collections.singletonList(getEntitySet(CONTAINER_FQN, ES_PRODUCTS_NAME)));
+                .setEntitySets(List.of(
+                    getEntitySet(CONTAINER_FQN, ES_PRODUCTS_NAME),
+                    getEntitySet(CONTAINER_FQN, ES_CATEGORIES_NAME)
+                ));
     }
 
     @Override
     public List<CsdlSchema> getSchemas() {
         CsdlSchema schema = new CsdlSchema();
         schema.setNamespace(NAMESPACE);
-        schema.setEntityTypes(Collections.singletonList(getEntityType(ET_PRODUCT_FQN)));
+        schema.setEntityTypes(List.of(
+            getEntityType(ET_PRODUCT_FQN),
+            getEntityType(ET_CATEGORY_FQN)
+        ));
         schema.setEntityContainer(getEntityContainer());
         return Collections.singletonList(schema);
     }

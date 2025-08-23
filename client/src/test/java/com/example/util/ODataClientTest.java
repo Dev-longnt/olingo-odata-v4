@@ -149,6 +149,61 @@ public class ODataClientTest {
     }
 
     @Test
+    void testGetCollectionWithExpand() throws URISyntaxException {
+        String entitySet = "Products";
+        String expandOption = "Category";
+        String expectedUrl = baseUrl + entitySet + "?$expand=" + expandOption;
+        URI expectedUri = new URI(expectedUrl);
+        ResponseEntity<String> expectedResponse = new ResponseEntity<>("[]", HttpStatus.OK);
+
+        when(oDataQueryBuilder.expand(expandOption)).thenReturn(oDataQueryBuilder);
+        when(oDataQueryBuilder.buildUri(baseUrl + entitySet)).thenReturn(expectedUri);
+        when(restTemplate.getForEntity(eq(expectedUri), eq(String.class)))
+                .thenReturn(expectedResponse);
+
+        ResponseEntity<String> actualResponse = odataClient.get(entitySet).expand(expandOption).execute();
+
+        assertEquals(expectedResponse, actualResponse);
+        verify(oDataQueryBuilder).expand(expandOption);
+        verify(oDataQueryBuilder).buildUri(baseUrl + entitySet);
+        verify(restTemplate).getForEntity(eq(expectedUri), eq(String.class));
+    }
+
+    @Test
+    void testGetCollectionWithCount() throws URISyntaxException {
+        String entitySet = "Products";
+        String expectedUrl = baseUrl + entitySet + "?$count=true";
+        URI expectedUri = new URI(expectedUrl);
+        ResponseEntity<String> expectedResponse = new ResponseEntity<>("{\"@odata.count\": 10, \"value\":[]}", HttpStatus.OK);
+
+        when(oDataQueryBuilder.count()).thenReturn(oDataQueryBuilder);
+        when(oDataQueryBuilder.buildUri(baseUrl + entitySet)).thenReturn(expectedUri);
+        when(restTemplate.getForEntity(eq(expectedUri), eq(String.class)))
+                .thenReturn(expectedResponse);
+
+        ResponseEntity<String> actualResponse = odataClient.get(entitySet).count().execute();
+
+        assertEquals(expectedResponse, actualResponse);
+        verify(oDataQueryBuilder).count();
+        verify(oDataQueryBuilder).buildUri(baseUrl + entitySet);
+        verify(restTemplate).getForEntity(eq(expectedUri), eq(String.class));
+    }
+
+    @Test
+    void testGetMetadata() {
+        String metadataUrl = baseUrl + "$metadata";
+        ResponseEntity<String> expectedResponse = new ResponseEntity<>("<metadata/>", HttpStatus.OK);
+
+        when(restTemplate.getForEntity(eq(metadataUrl), eq(String.class)))
+                .thenReturn(expectedResponse);
+
+        ResponseEntity<String> actualResponse = odataClient.getMetadata();
+
+        assertEquals(expectedResponse, actualResponse);
+        verify(restTemplate).getForEntity(eq(metadataUrl), eq(String.class));
+    }
+
+    @Test
     void testDeleteEntity() throws URISyntaxException {
         String entitySet = "Products";
         int key = 1;

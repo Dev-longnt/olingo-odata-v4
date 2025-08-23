@@ -73,6 +73,7 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
             EntityCollectionSerializerOptions opts = EntityCollectionSerializerOptions.with()
                     .id(id)
                     .contextURL(contextUrl)
+                    .count(uriInfo.getCountOption())
                     .build();
             SerializerResult serializerResult = serializer.entityCollection(serviceMetadata, edmEntityType, entitySet, opts);
 
@@ -142,11 +143,26 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
             (uriInfo != null ? uriInfo.toString() : "null"));
         if (TestEdmProvider.ES_PRODUCTS_NAME.equals(edmEntitySet.getName())) {
             try (Connection conn = DatabaseHelper.getConnection()) {
-                StringBuilder sql = new StringBuilder("SELECT * FROM PRODUCTS");
+                boolean expandCategory = false;
+                if (uriInfo.getExpandOption() != null && uriInfo.getExpandOption().getText() != null) {
+                    String expandText = uriInfo.getExpandOption().getText();
+                    logger.debug("Expand option text: {}", expandText);
+                    if (expandText.contains("Category")) {
+                        expandCategory = true;
+                    }
+                }
+                StringBuilder sql = new StringBuilder();
+                String idCol = expandCategory ? "P.ID" : "ID";
+                String priceCol = expandCategory ? "P.Price" : "Price";
+                if (expandCategory) {
+                    sql.append("SELECT P.*, C.ID AS CategoryID, C.Name AS CategoryName FROM PRODUCTS P LEFT JOIN CATEGORIES C ON P.ID = C.ID");
+                } else {
+                    sql.append("SELECT * FROM PRODUCTS");
+                }
                 boolean hasWhere = false;
                 // Handle key lookup
                 if (keyParams != null && !keyParams.isEmpty()) {
-                    sql.append(" WHERE ID = ?");
+                    sql.append(" WHERE " + idCol + " = ?");
                     hasWhere = true;
                 }
                 // Parse OData query options from UriInfo
@@ -178,7 +194,7 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                     if (m.find()) {
                         filterPrice = Double.parseDouble(m.group(1));
                         sql.append(hasWhere ? " AND " : " WHERE ");
-                        sql.append("Price > ?");
+                        sql.append(priceCol + " > ?");
                         hasWhere = true;
                     } else {
                         logger.warn("Unsupported filter expression: {}", filterValue);
@@ -192,17 +208,12 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
 
                 // $orderby (supports Price desc)
                 if (orderByValue != null && orderByValue.equals("Price desc")) {
-                    sql.append(" ORDER BY Price DESC");
+                    sql.append(" ORDER BY " + priceCol + " DESC");
                 }
                 
                 // $select (ignored, always returns all columns)
                 // $top/$skip
-                // TODO: Implement $top, $skip, $count, $expand using UriInfo if needed
-                // Example:
-                // if (uriInfo.getTopOption() != null) { ... }
-                // if (uriInfo.getSkipOption() != null) { ... }
-                // if (uriInfo.getCountOption() != null) { ... }
-                // For now, these features are not implemented.
+                // TODO: Implement $top, $skip, $count using UriInfo if needed
                 try (PreparedStatement stmt = conn.prepareStatement(sql.toString())) {
                     if (keyParams != null && !keyParams.isEmpty()) {
                         paramCount++;
@@ -225,10 +236,14 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                                 .addProperty(new Property(null, "Price", ValueType.PRIMITIVE, rs.getDouble("Price")));
                         // Set canonical ID URI for OData entity
                         product.setId(java.net.URI.create("Products(" + rs.getInt("ID") + ")"));
-                        // TODO: Implement $expand=Category if needed
-                        // if (expandCategory) {
-                        //     product.addProperty(new Property(null, "Category", ValueType.PRIMITIVE, rs.getString("CategoryName")));
-                        // }
+                        if (expandCategory) {
+                            int catId = rs.getInt("CategoryID");
+                            String catName = rs.getString("CategoryName");
+                            Entity category = new Entity()
+                                .addProperty(new Property(null, "ID", ValueType.PRIMITIVE, catId))
+                                .addProperty(new Property(null, "Name", ValueType.PRIMITIVE, catName));
+                            product.addProperty(new Property(null, "Category", ValueType.ENTITY, category));
+                        }
                         productsCollection.getEntities().add(product);
                         foundAny = true;
                         logger.debug("getData: Found row ID={}, Name={}, Desc={}", rs.getInt("ID"), rs.getString("Name"), rs.getString("Description"));
@@ -237,11 +252,14 @@ public class TestProcessor implements EntityCollectionProcessor, EntityProcessor
                         logger.debug("getData: No rows found for SQL: {}", sql);
                     }
                 }
-                // The sorting is now handled by the database, so this is not needed.
             } catch (SQLException e) {
                 logger.error("getData: SQLException: {}", e.getMessage(), e);
                 throw new RuntimeException("Database error: " + e.getMessage(), e);
             }
+        }
+        // Implement $count support
+        if (uriInfo.getCountOption() != null && uriInfo.getCountOption().getValue()) {
+            productsCollection.setCount(productsCollection.getEntities().size());
         }
         return productsCollection;
     }

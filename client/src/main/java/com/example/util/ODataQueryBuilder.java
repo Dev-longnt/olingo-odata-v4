@@ -36,6 +36,16 @@ public class ODataQueryBuilder {
         return this;
     }
 
+    public ODataQueryBuilder expand(String expandExpression) {
+        queryOptions.put("$expand", expandExpression);
+        return this;
+    }
+
+    public ODataQueryBuilder count() {
+        queryOptions.put("$count", "true");
+        return this;
+    }
+
     public String build(String baseUrl) {
         StringBuilder sb = new StringBuilder(baseUrl);
         if (!queryOptions.isEmpty()) {

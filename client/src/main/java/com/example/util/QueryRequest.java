@@ -30,6 +30,16 @@ public class QueryRequest {
         return this;
     }
 
+    public QueryRequest expand(String expandExpression) {
+        oDataQueryBuilder.expand(expandExpression);
+        return this;
+    }
+
+    public QueryRequest count() {
+        oDataQueryBuilder.count();
+        return this;
+    }
+
     public ResponseEntity<String> execute() throws URISyntaxException {
         URI uri = oDataQueryBuilder.buildUri(baseUrl + entitySet);
         return restTemplate.getForEntity(uri, String.class);

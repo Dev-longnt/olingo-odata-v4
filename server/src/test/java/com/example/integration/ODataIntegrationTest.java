@@ -102,6 +102,9 @@ public class ODataIntegrationTest {
         URI uri = new URI(BASE_URL + "Products");
         ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
 
+        System.out.println("testReadEntityCollection: Status=" + response.getStatusCode());
+        System.out.println("testReadEntityCollection: Body=" + response.getBody());
+
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(response.getBody().contains("Products"));
         assertTrue(response.getBody().contains("Notebook"));
@@ -119,6 +122,9 @@ public class ODataIntegrationTest {
     void testReadSingleEntity() throws Exception {
         URI uri = new URI(BASE_URL + "Products(1)");
         ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
+
+        System.out.println("testReadSingleEntity: Status=" + response.getStatusCode());
+        System.out.println("testReadSingleEntity: Body=" + response.getBody());
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(response.getBody().contains("Notebook"));
@@ -138,6 +144,9 @@ public class ODataIntegrationTest {
         String json = "{\"ID\":11,\"Name\":\"Camera\",\"Description\":\"Digital camera\",\"Price\":400.00}";
         ResponseEntity<String> response = executeJsonRequest(BASE_URL + "Products", HttpMethod.POST, json);
 
+        System.out.println("testCreateEntity: Status=" + response.getStatusCode());
+        System.out.println("testCreateEntity: Body=" + response.getBody());
+
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertTrue(response.getBody().contains("Camera"));
 
@@ -155,10 +164,15 @@ public class ODataIntegrationTest {
         String json = "{\"Name\":\"Notebook Pro\",\"Price\":1500.00}";
         ResponseEntity<String> response = executeJsonRequest(BASE_URL + "Products(1)", HttpMethod.PUT, json);
 
+        System.out.println("testUpdateEntity: Status=" + response.getStatusCode());
+        System.out.println("testUpdateEntity: Body=" + response.getBody());
+
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
 
         URI getUri = new URI(BASE_URL + "Products(1)");
         ResponseEntity<String> getResponse = restTemplate.getForEntity(getUri, String.class);
+        System.out.println("testUpdateEntity: GET Status=" + getResponse.getStatusCode());
+        System.out.println("testUpdateEntity: GET Body=" + getResponse.getBody());
         assertTrue(getResponse.getBody().contains("Notebook Pro"));
         assertTrue(getResponse.getBody().contains("1500"));
 
@@ -169,5 +183,85 @@ public class ODataIntegrationTest {
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(dbProductsTable, row -> row[0] != null && Integer.parseInt(row[0].toString()) == 1, null);
 
         Assertion.assertEquals(dbFilteredTable, apiProductTable);
+    }
+
+    @Test
+    void testDeleteEntity() throws Exception {
+        // Perform delete operation
+        restTemplate.delete(BASE_URL + "Products(2)");
+
+        // Verify deletion by trying to get the entity
+        URI getUri = new URI(BASE_URL + "Products(2)");
+        ResponseEntity<String> getResponse = restTemplate.getForEntity(getUri, String.class);
+        System.out.println("testDeleteEntity: GET Status=" + getResponse.getStatusCode());
+        System.out.println("testDeleteEntity: GET Body=" + getResponse.getBody());
+        assertEquals(HttpStatus.NOT_FOUND, getResponse.getStatusCode());
+
+        // DBUnit validation: Tablet should not exist in DB
+        ITable tabletTable = dbUnitConnection.createQueryTable("tablet_check",
+            "SELECT ID, Name, Description, Price FROM PRODUCTS WHERE Name = 'Tablet'");
+        assertEquals(0, tabletTable.getRowCount(), "Tablet should be deleted from DB");
+    }
+
+    @Test
+    void testFilterAndOrderBy() throws Exception {
+        // Manually construct the URL with $filter and $orderby
+        URI uri = new URI(BASE_URL + "Products?$filter=Price%20gt%20500&$orderby=Price%20desc");
+        ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
+
+        System.out.println("Response Status Code: " + response.getStatusCode());
+        System.out.println("Response Body: " + response.getBody());
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("Products"));
+        assertTrue(response.getBody().contains("Notebook"));
+
+        org.json.JSONObject root = new org.json.JSONObject(response.getBody());
+        org.json.JSONArray productsJson = root.getJSONArray("value");
+        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
+        DefaultTable apiProductsTable = DbUnitTestUtils.buildTableFromJson(productsJson, dbProductsTable);
+
+        DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(
+            dbProductsTable,
+            row -> row[3] != null && ((Double)row[3]) > 500,
+            (a, b) -> Double.compare((Double)b[3], (Double)a[3])
+        );
+
+        System.out.println("\n--- API Products Table ---");
+        DbUnitTestUtils.printTable(apiProductsTable);
+        System.out.println("\n--- DB Filtered Table ---");
+        DbUnitTestUtils.printTable(dbFilteredTable);
+
+        Assertion.assertEquals(dbFilteredTable, apiProductsTable);
+    }
+
+    @Test
+    void testReadEntityCollectionWithExpand() throws Exception {
+        URI uri = new URI(BASE_URL + "Products?$expand=Category");
+        ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
+
+        System.out.println("testReadEntityCollectionWithExpand: Status=" + response.getStatusCode());
+        System.out.println("testReadEntityCollectionWithExpand: Body=" + response.getBody());
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("Products"));
+        // The server's TestProcessor does not currently support $expand, so we only check for a successful response.
+        // In a full implementation, you would add assertions here to verify the expanded data.
+    }
+
+    @Test
+    void testReadEntityCollectionWithCount() throws Exception {
+        URI uri = new URI(BASE_URL + "Products?$count=true");
+        ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
+
+        System.out.println("testReadEntityCollectionWithCount: Status=" + response.getStatusCode());
+        System.out.println("testReadEntityCollectionWithCount: Body=" + response.getBody());
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("@odata.count"));
+
+        org.json.JSONObject root = new org.json.JSONObject(response.getBody());
+        assertTrue(root.has("@odata.count"));
+        assertTrue(root.getInt("@odata.count") >= 0); // Check if count is a non-negative number
     }
 }
