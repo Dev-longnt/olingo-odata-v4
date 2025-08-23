@@ -11,4 +11,4 @@ plugins {
 }
 
 rootProject.name = 'olingo-odata-v4-test'
-include('app')
+include('server', 'client')

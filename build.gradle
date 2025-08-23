@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.3.2' // Using 3.3.2 as 3.5.5 is not released
+    id 'org.springframework.boot' version '3.3.2'
     id 'io.spring.dependency-management' version '1.1.6'
 }
 
@@ -17,37 +17,58 @@ repositories {
     mavenCentral()
 }
 
+bootJar.enabled = false
+
+// Define project dependencies
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // For database interaction with Spring
-    implementation 'org.springframework.boot:spring-boot-starter-jdbc' // For JDBC support
-
-    // Olingo OData V4 (updated to 5.0.0 for Jakarta EE compatibility)
-    implementation 'org.apache.olingo:odata-server-core:5.0.0'
-    implementation 'org.apache.olingo:odata-server-api:5.0.0'
-    implementation 'org.apache.olingo:odata-commons-api:5.0.0'
-    implementation 'org.apache.olingo:odata-commons-core:5.0.0'
-
-    // JSON parsing (already present)
-    implementation 'org.json:json:20240303'
-
-    // H2 Database (already present)
-    runtimeOnly 'com.h2database:h2'
-
-    // SLF4J and Logback for logging (already present, Spring Boot handles this)
-    // implementation 'org.slf4j:slf4j-api:2.0.7' // Managed by Spring Boot
-    // implementation 'ch.qos.logback:logback-classic:1.4.8' // Managed by Spring Boot
-
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.junit.jupiter:junit-jupiter-api'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
-    testImplementation 'org.mockito:mockito-core:5.12.0'
-    testImplementation 'org.dbunit:dbunit:2.7.3' // Keep for existing DBUnit tests
+    // Client module depends on server module if needed, or vice-versa
+    // For now, they are independent. If client needs server classes, add:
+    // implementation project(':server')
 }
 
-tasks.named('test') {
-    useJUnitPlatform()
-    testLogging {
-        showStandardStreams = true
+// Configure subprojects
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
+
+    repositories {
+        mavenCentral()
     }
+
+    // Common test dependencies if any
+    dependencies {
+        testImplementation 'org.junit.jupiter:junit-jupiter-api'
+        testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+        testImplementation 'org.mockito:mockito-core:5.12.0'
+    }
+
+    tasks.named('test') {
+        useJUnitPlatform()
+        testLogging {
+            showStandardStreams = true
+        }
+    }
+}
+
+// Specific dependency for client on server if needed
+project(':client') {
+    dependencies {
+        // If client needs to use classes from server, uncomment this:
+        // implementation project(':server')
+    }
+}
+
+// Specific dependency for server on client if needed
+project(':server') {
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+
+    dependencies {
+        // If server needs to use classes from client, uncomment this:
+        // implementation project(':client')
+    }
+}
+
+tasks.named('build') {
+    dependsOn subprojects.tasks.build
 }

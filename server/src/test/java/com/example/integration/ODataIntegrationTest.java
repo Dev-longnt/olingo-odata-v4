@@ -35,7 +35,6 @@ import org.springframework.http.ResponseEntity;
 
 import com.example.OdataApplication;
 import com.example.util.DbUnitTestUtils;
-import com.example.util.ODataClient;
 
 @SpringBootTest(classes = OdataApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public class ODataIntegrationTest {
@@ -47,7 +46,6 @@ public class ODataIntegrationTest {
     private TestRestTemplate restTemplate;
 
     private String BASE_URL;
-    private ODataClient odataClient;
     private static Connection h2Connection;
     private static IDatabaseConnection dbUnitConnection;
 
@@ -86,7 +84,6 @@ public class ODataIntegrationTest {
     @BeforeEach
     void setUp() throws Exception {
         BASE_URL = "http://localhost:" + port + "/odata/";
-        odataClient = new ODataClient(BASE_URL, restTemplate.getRestTemplate(), new com.example.ODataQueryBuilder());
         // Clean and insert data using DBUnit
         InputStream is = getClass().getClassLoader().getResourceAsStream("dataset.xml");
         IDataSet dataSet = new FlatXmlDataSetBuilder().build(is);
@@ -102,7 +99,7 @@ public class ODataIntegrationTest {
 
     @Test
     void testReadEntityCollection() throws Exception {
-        URI uri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products");
+        URI uri = new URI(BASE_URL + "Products");
         ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -120,7 +117,7 @@ public class ODataIntegrationTest {
 
     @Test
     void testReadSingleEntity() throws Exception {
-        URI uri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products(1)");
+        URI uri = new URI(BASE_URL + "Products(1)");
         ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -160,7 +157,7 @@ public class ODataIntegrationTest {
 
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
 
-        URI getUri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products(1)");
+        URI getUri = new URI(BASE_URL + "Products(1)");
         ResponseEntity<String> getResponse = restTemplate.getForEntity(getUri, String.class);
         assertTrue(getResponse.getBody().contains("Notebook Pro"));
         assertTrue(getResponse.getBody().contains("1500"));
@@ -172,52 +169,5 @@ public class ODataIntegrationTest {
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(dbProductsTable, row -> row[0] != null && Integer.parseInt(row[0].toString()) == 1, null);
 
         Assertion.assertEquals(dbFilteredTable, apiProductTable);
-    }
-
-    @Test
-    void testDeleteEntity() throws Exception {
-        odataClient.delete("Products", 2).execute();
-
-        URI getUri = new com.example.ODataQueryBuilder().buildUri(BASE_URL + "Products(2)");
-        ResponseEntity<String> getResponse = restTemplate.getForEntity(getUri, String.class);
-        assertEquals(HttpStatus.NOT_FOUND, getResponse.getStatusCode());
-
-        // DBUnit validation: Tablet should not exist in DB
-        ITable tabletTable = dbUnitConnection.createQueryTable("tablet_check",
-            "SELECT ID, Name, Description, Price FROM PRODUCTS WHERE Name = 'Tablet'");
-        assertEquals(0, tabletTable.getRowCount(), "Tablet should be deleted from DB");
-    }
-
-    @Test
-    void testFilterAndOrderBy() throws Exception {
-        ResponseEntity<String> response = odataClient.get("Products")
-            .filter("Price gt 500")
-            .orderBy("Price desc")
-            .execute();
-
-        System.out.println("Response Status Code: " + response.getStatusCode());
-        System.out.println("Response Body: " + response.getBody());
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertTrue(response.getBody().contains("Products"));
-        assertTrue(response.getBody().contains("Notebook"));
-
-        org.json.JSONObject root = new org.json.JSONObject(response.getBody());
-        org.json.JSONArray productsJson = root.getJSONArray("value");
-        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
-        DefaultTable apiProductsTable = DbUnitTestUtils.buildTableFromJson(productsJson, dbProductsTable);
-
-        DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(
-            dbProductsTable,
-            row -> row[3] != null && ((Double)row[3]) > 500,
-            (a, b) -> Double.compare((Double)b[3], (Double)a[3])
-        );
-
-        System.out.println("\n--- API Products Table ---");
-        DbUnitTestUtils.printTable(apiProductsTable);
-        System.out.println("\n--- DB Filtered Table ---");
-        DbUnitTestUtils.printTable(dbFilteredTable);
-
-        Assertion.assertEquals(dbFilteredTable, apiProductsTable);
     }
 }

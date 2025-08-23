@@ -1,6 +1,6 @@
 package com.example.util;
 
-import com.example.ODataQueryBuilder;
+import com.example.util.ODataQueryBuilder;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;

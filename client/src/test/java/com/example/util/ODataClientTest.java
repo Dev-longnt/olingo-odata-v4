@@ -1,6 +1,6 @@
 package com.example.util;
 
-import com.example.ODataQueryBuilder;
+import com.example.util.ODataQueryBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

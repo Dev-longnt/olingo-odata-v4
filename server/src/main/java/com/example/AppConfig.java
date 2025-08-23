@@ -1,6 +1,6 @@
 package com.example;
 
-import com.example.util.ODataClient;
+import com.example.util.ODataQueryBuilder; // Added this line
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,10 +17,5 @@ public class AppConfig {
     @Bean
     public ODataQueryBuilder oDataQueryBuilder() {
         return new ODataQueryBuilder();
-    }
-
-    @Bean
-    public ODataClient odataClient(RestTemplate restTemplate, @Value("${odata.base.url}") String baseUrl, ODataQueryBuilder oDataQueryBuilder) {
-        return new ODataClient(baseUrl, restTemplate, oDataQueryBuilder);
     }
 }

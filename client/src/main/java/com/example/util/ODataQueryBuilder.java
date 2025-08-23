@@ -1,6 +1,4 @@
-package com.example;
-
-import org.apache.olingo.server.api.debug.DebugSupport;
+package com.example.util;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -12,11 +10,6 @@ import java.util.Map;
 public class ODataQueryBuilder {
 
     private final Map<String, String> queryOptions = new LinkedHashMap<>();
-
-    public ODataQueryBuilder enableDebug() {
-        queryOptions.put(DebugSupport.ODATA_DEBUG_QUERY_PARAMETER, "json");
-        return this;
-    }
 
     public ODataQueryBuilder filter(String filterExpression) {
         queryOptions.put("$filter", filterExpression);
