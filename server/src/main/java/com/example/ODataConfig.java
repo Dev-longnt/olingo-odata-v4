@@ -7,6 +7,8 @@ import org.apache.olingo.server.api.debug.DefaultDebugSupport;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
+import javax.sql.DataSource;
 
 import java.util.Collections;
 
@@ -18,10 +20,13 @@ public class ODataConfig {
         return OData.newInstance();
     }
 
+    @Autowired
+    private DataSource dataSource;
+
     @Bean
     public DefaultEdmProvider defaultEdmProvider() {
         try {
-            return new DefaultEdmProvider(DatabaseHelper.getConnection());
+            return new DefaultEdmProvider(dataSource.getConnection());
         } catch (java.sql.SQLException e) {
             throw new RuntimeException("Failed to get DB connection for DefaultEdmProvider", e);
         }

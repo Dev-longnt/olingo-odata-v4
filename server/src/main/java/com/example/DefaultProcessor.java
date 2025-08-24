@@ -6,6 +6,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
+import javax.sql.DataSource;
+
 import org.apache.olingo.commons.api.data.ContextURL;
 import org.apache.olingo.commons.api.data.Entity;
 import org.apache.olingo.commons.api.data.EntityCollection;
@@ -37,7 +39,13 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+@Component
 public class DefaultProcessor implements EntityCollectionProcessor, EntityProcessor {
+    @Autowired
+    private DataSource dataSource;
 
     private static final Logger logger = LoggerFactory.getLogger(DefaultProcessor.class);
 
@@ -142,7 +150,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         String entitySetName = edmEntitySet.getName();
         String tableName = getTableNameFromEntitySetName(entitySetName);
 
-        try (Connection conn = DatabaseHelper.getConnection()) {
+        try (Connection conn = dataSource.getConnection()) {
             StringBuilder selectColumns = new StringBuilder();
             StringBuilder joinClause = new StringBuilder();
             String mainTableAlias = "T"; // Alias for the main table
@@ -390,7 +398,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         EdmEntitySet edmEntitySet = uriResourceEntitySet.getEntitySet();
 
         if ("Products".equals(edmEntitySet.getName()) || "Product".equals(edmEntitySet.getName())) {
-            try (Connection conn = DatabaseHelper.getConnection()) {
+            try (Connection conn = dataSource.getConnection()) {
                 java.io.InputStream bodyStream = request.getBody();
                 String jsonString = new String(bodyStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 logger.debug("createEntity raw JSON: {}", jsonString);
@@ -455,7 +463,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         String tableName = getTableNameFromEntitySetName(edmEntitySet.getName());
         List<org.apache.olingo.commons.api.edm.EdmKeyPropertyRef> keyRefs = edmEntityType.getKeyPropertyRefs();
         
-        try (Connection conn = DatabaseHelper.getConnection()) {
+        try (Connection conn = dataSource.getConnection()) {
             java.io.InputStream bodyStream = request.getBody();
             String jsonString = new String(bodyStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             JSONObject json = new JSONObject(jsonString);
@@ -549,7 +557,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         if ("Products".equals(edmEntitySet.getName()) || "Product".equals(edmEntitySet.getName())) {
             List<UriParameter> keyPredicates = uriResourceEntitySet.getKeyPredicates();
             int id = Integer.parseInt(keyPredicates.get(0).getText());
-            try (Connection conn = DatabaseHelper.getConnection()) {
+            try (Connection conn = dataSource.getConnection()) {
                 String sql = "DELETE FROM PRODUCT WHERE ID = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setInt(1, id);
