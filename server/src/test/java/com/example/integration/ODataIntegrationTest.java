@@ -68,8 +68,8 @@ public class ODataIntegrationTest {
 
         // Create tables
         try (Statement stmt = h2Connection.createStatement()) {
-            stmt.execute("CREATE TABLE IF NOT EXISTS PRODUCTS (ID INT PRIMARY KEY, Name VARCHAR(255), Description VARCHAR(255), Price DOUBLE)");
-            stmt.execute("CREATE TABLE IF NOT EXISTS CATEGORIES (ID INT PRIMARY KEY, Name VARCHAR(255))");
+            stmt.execute("CREATE TABLE IF NOT EXISTS CATEGORY (Id INT PRIMARY KEY, Name VARCHAR(255))");
+            stmt.execute("CREATE TABLE IF NOT EXISTS PRODUCT (Id INT PRIMARY KEY, Name VARCHAR(255), Description VARCHAR(255), Price DOUBLE, CategoryID INT, FOREIGN KEY (CategoryID) REFERENCES CATEGORY(Id))");
         }
     }
 
@@ -111,7 +111,7 @@ public class ODataIntegrationTest {
 
         org.json.JSONObject root = new org.json.JSONObject(response.getBody());
         org.json.JSONArray productsJson = root.getJSONArray("value");
-        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
+        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCT");
         DefaultTable apiProductsTable = DbUnitTestUtils.buildTableFromJson(productsJson, dbProductsTable);
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(dbProductsTable, null, null);
 
@@ -128,10 +128,10 @@ public class ODataIntegrationTest {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(response.getBody().contains("Notebook"));
-        assertTrue(response.getBody().contains("\"Price\":"));
+        assertTrue(response.getBody().contains("PRICE"));
 
         org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(response.getBody());
-        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
+        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCT");
         DefaultTable apiProductTable = DbUnitTestUtils.buildTableFromJsonObject(productJson, dbProductsTable);
 
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(dbProductsTable, row -> row[0] != null && Integer.parseInt(row[0].toString()) == 1, null);
@@ -141,7 +141,7 @@ public class ODataIntegrationTest {
 
     @Test
     void testCreateEntity() throws Exception {
-        String json = "{\"ID\":11,\"Name\":\"Camera\",\"Description\":\"Digital camera\",\"Price\":400.00}";
+        String json = "{\"ID\":11,\"NAME\":\"Camera\",\"DESCRIPTION\":\"Digital camera\",\"PRICE\":400.00}";
         ResponseEntity<String> response = executeJsonRequest(BASE_URL + "Products", HttpMethod.POST, json);
 
         System.out.println("testCreateEntity: Status=" + response.getStatusCode());
@@ -151,7 +151,7 @@ public class ODataIntegrationTest {
         assertTrue(response.getBody().contains("Camera"));
 
         org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(response.getBody());
-        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
+        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCT");
         DefaultTable apiProductTable = DbUnitTestUtils.buildTableFromJsonObject(productJson, dbProductsTable);
 
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(dbProductsTable, row -> row[0] != null && Integer.parseInt(row[0].toString()) == 11, null);
@@ -177,7 +177,7 @@ public class ODataIntegrationTest {
         assertTrue(getResponse.getBody().contains("1500"));
 
         org.json.JSONObject productJson = DbUnitTestUtils.parseProductJson(getResponse.getBody());
-        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
+        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCT");
         DefaultTable apiProductTable = DbUnitTestUtils.buildTableFromJsonObject(productJson, dbProductsTable);
 
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(dbProductsTable, row -> row[0] != null && Integer.parseInt(row[0].toString()) == 1, null);
@@ -199,14 +199,14 @@ public class ODataIntegrationTest {
 
         // DBUnit validation: Tablet should not exist in DB
         ITable tabletTable = dbUnitConnection.createQueryTable("tablet_check",
-            "SELECT ID, Name, Description, Price FROM PRODUCTS WHERE Name = 'Tablet'");
+            "SELECT ID, Name, Description, Price FROM PRODUCT WHERE Name = 'Tablet'");
         assertEquals(0, tabletTable.getRowCount(), "Tablet should be deleted from DB");
     }
 
     @Test
     void testFilterAndOrderBy() throws Exception {
         // Manually construct the URL with $filter and $orderby
-        URI uri = new URI(BASE_URL + "Products?$filter=Price%20gt%20500&$orderby=Price%20desc");
+        URI uri = new URI(BASE_URL + "Products?$filter=PRICE%20gt%20500&$orderby=PRICE%20desc");
         ResponseEntity<String> response = restTemplate.getForEntity(uri, String.class);
 
         System.out.println("Response Status Code: " + response.getStatusCode());
@@ -218,7 +218,7 @@ public class ODataIntegrationTest {
 
         org.json.JSONObject root = new org.json.JSONObject(response.getBody());
         org.json.JSONArray productsJson = root.getJSONArray("value");
-        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCTS");
+        ITable dbProductsTable = dbUnitConnection.createDataSet().getTable("PRODUCT");
         DefaultTable apiProductsTable = DbUnitTestUtils.buildTableFromJson(productsJson, dbProductsTable);
 
         DefaultTable dbFilteredTable = DbUnitTestUtils.filterDbTable(

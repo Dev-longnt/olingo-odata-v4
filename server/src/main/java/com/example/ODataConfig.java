@@ -19,24 +19,28 @@ public class ODataConfig {
     }
 
     @Bean
-    public TestEdmProvider testEdmProvider() {
-        return new TestEdmProvider();
+    public DefaultEdmProvider defaultEdmProvider() {
+        try {
+            return new DefaultEdmProvider(DatabaseHelper.getConnection());
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException("Failed to get DB connection for DefaultEdmProvider", e);
+        }
     }
 
     @Bean
-    public TestProcessor testProcessor() {
-        return new TestProcessor();
+    public DefaultProcessor defaultProcessor() {
+        return new DefaultProcessor();
     }
 
     @Bean
-    public ServiceMetadata serviceMetadata(OData odata, TestEdmProvider testEdmProvider) {
-        return odata.createServiceMetadata(testEdmProvider, Collections.emptyList());
+    public ServiceMetadata serviceMetadata(OData odata, DefaultEdmProvider defaultEdmProvider) {
+        return odata.createServiceMetadata(defaultEdmProvider, Collections.emptyList());
     }
 
     @Bean
-    public ODataHttpHandler odataHandler(OData odata, ServiceMetadata serviceMetadata, TestProcessor testProcessor) {
+    public ODataHttpHandler odataHandler(OData odata, ServiceMetadata serviceMetadata, DefaultProcessor defaultProcessor) {
         ODataHttpHandler handler = odata.createHandler(serviceMetadata);
-        handler.register(testProcessor);
+        handler.register(defaultProcessor);
         handler.register(new DefaultDebugSupport());
         return handler;
     }

@@ -11,7 +11,7 @@ import java.util.function.Predicate;
 import java.util.Comparator;
 
 public class DbUnitTestUtils {
-    public static final String[] PRODUCT_COLUMNS = {"ID", "Name", "Description", "Price"};
+    public static final String[] PRODUCT_COLUMNS = {"ID", "NAME", "DESCRIPTION", "PRICE", "CATEGORYID"};
 
     public static DefaultTable buildTableFromJson(JSONArray productsJson, ITable metaTable) throws Exception {
         DefaultTable table = new DefaultTable(metaTable.getTableMetaData());
