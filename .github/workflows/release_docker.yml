@@ -1,10 +1,5 @@
 name: Release Server Docker Image
 
-on:
-  push:
-    tags:
-      - 'v*'
-
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
