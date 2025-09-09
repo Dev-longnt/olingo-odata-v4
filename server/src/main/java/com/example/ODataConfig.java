@@ -25,11 +25,7 @@ public class ODataConfig {
 
     @Bean
     public DefaultEdmProvider defaultEdmProvider() {
-        try {
-            return new DefaultEdmProvider(dataSource.getConnection());
-        } catch (java.sql.SQLException e) {
-            throw new RuntimeException("Failed to get DB connection for DefaultEdmProvider", e);
-        }
+        return new DefaultEdmProvider(dataSource);
     }
 
     @Bean

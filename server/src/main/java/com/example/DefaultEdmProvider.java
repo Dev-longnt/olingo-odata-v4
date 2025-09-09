@@ -7,136 +7,285 @@ import org.apache.olingo.commons.api.edm.provider.CsdlEntityContainer;
 import org.apache.olingo.commons.api.edm.provider.CsdlEntityContainerInfo;
 import org.apache.olingo.commons.api.edm.provider.CsdlEntitySet;
 import org.apache.olingo.commons.api.edm.provider.CsdlEntityType;
+import org.apache.olingo.commons.api.edm.provider.CsdlNavigationProperty;
+import org.apache.olingo.commons.api.edm.provider.CsdlNavigationPropertyBinding;
 import org.apache.olingo.commons.api.edm.provider.CsdlProperty;
 import org.apache.olingo.commons.api.edm.provider.CsdlPropertyRef;
 import org.apache.olingo.commons.api.edm.provider.CsdlSchema;
+import org.apache.olingo.commons.api.ex.ODataException;
+import org.apache.olingo.server.api.ODataApplicationException;
+import org.apache.olingo.commons.api.http.HttpStatusCode;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import org.springframework.stereotype.Component;
 
+@Component
 public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
-    private final java.sql.Connection connection;
-    private List<TableInfo> cachedTables = null;
 
-    public DefaultEdmProvider(java.sql.Connection connection) {
-        this.connection = connection;
+    private final DataSource dataSource;
+    private final Map<String, TableInfo> cachedTables = new HashMap<>();
+    private boolean schemaScanned = false;
+    private CsdlEntityContainer entityContainer;
+
+    public static final String NAMESPACE = "OData.Demo";
+    public static final String CONTAINER_NAME = "Container";
+    public static final FullQualifiedName CONTAINER_FQN = new FullQualifiedName(NAMESPACE, CONTAINER_NAME);
+
+    public DefaultEdmProvider(DataSource dataSource) {
+        this.dataSource = dataSource;
     }
 
-    // Helper class to hold table/column info
-    public static class TableInfo {
-        public String tableName;
-        public List<ColumnInfo> columns = new java.util.ArrayList<>();
-        public TableInfo(String tableName) { this.tableName = tableName; }
+    private static class TableInfo {
+        String tableName;
+        List<ColumnInfo> columns = new ArrayList<>();
+        List<String> primaryKeys = new ArrayList<>();
+        List<ForeignKeyInfo> foreignKeys = new ArrayList<>();
+
+        TableInfo(String tableName) { this.tableName = tableName; }
     }
-    public static class ColumnInfo {
-        public String columnName;
-        public int dataType;
-        public ColumnInfo(String columnName, int dataType) {
+
+    private static class ColumnInfo {
+        String columnName;
+        int dataType;
+
+        ColumnInfo(String columnName, int dataType) {
             this.columnName = columnName;
             this.dataType = dataType;
         }
     }
 
-    // Scan DB schema and cache table/column info
-    private List<TableInfo> scanDatabaseSchema() {
-        if (cachedTables != null) return cachedTables;
-        List<TableInfo> tables = new java.util.ArrayList<>();
-        try {
-            java.sql.DatabaseMetaData meta = connection.getMetaData();
-            try (java.sql.ResultSet rsTables = meta.getTables(null, null, "%", new String[]{"TABLE"})) {
+    private static class ForeignKeyInfo {
+        String fkColumnName;
+        String pkTableName;
+        String pkColumnName;
+    }
+
+    private void scanDatabaseSchema() throws SQLException {
+        if (schemaScanned) {
+            return;
+        }
+
+        try (Connection conn = dataSource.getConnection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            String[] types = {"TABLE"};
+            try (ResultSet rsTables = meta.getTables(null, null, "%", types)) {
                 while (rsTables.next()) {
                     String tableName = rsTables.getString("TABLE_NAME");
-                    TableInfo table = new TableInfo(tableName);
-                    System.out.println("[EDM SCAN] Table: " + tableName);
-                    try (java.sql.ResultSet rsCols = meta.getColumns(null, null, tableName, "%")) {
-                        while (rsCols.next()) {
-                            String colName = rsCols.getString("COLUMN_NAME");
-                            int colType = rsCols.getInt("DATA_TYPE");
-                            table.columns.add(new ColumnInfo(colName, colType));
-                            System.out.println("    Column: " + colName + " (type=" + colType + ")");
-                        }
-                    }
-                    tables.add(table);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        cachedTables = tables;
-        return cachedTables;
-    }
-    
-
-    // Category entity and entity set
-    // Remove duplicate Category fields here (lines 24-28)
-
-    public static final String NAMESPACE = "DynamicOData";
-    public static final String CONTAINER_NAME = "Container";
-    public static final FullQualifiedName CONTAINER_FQN = new FullQualifiedName(NAMESPACE, CONTAINER_NAME);
-
-    @Override
-    public CsdlEntityType getEntityType(FullQualifiedName entityTypeName) {
-        List<TableInfo> tables = scanDatabaseSchema();
-        for (TableInfo table : tables) {
-            String odataTypeName = formatODataTypeName(table.tableName);
-            FullQualifiedName fqn = new FullQualifiedName(NAMESPACE, odataTypeName);
-            if (entityTypeName.equals(fqn)) {
-                List<CsdlProperty> properties = new java.util.ArrayList<>();
-                List<CsdlPropertyRef> keys = new java.util.ArrayList<>();
-                for (ColumnInfo col : table.columns) {
-                    String odataPropName = formatODataPropertyName(col.columnName);
-                    CsdlProperty prop = new CsdlProperty()
-                        .setName(odataPropName)
-                        .setType(mapSqlTypeToEdmType(col.dataType));
-                    properties.add(prop);
-                    if (odataPropName.equalsIgnoreCase("ID")) {
-                        CsdlPropertyRef keyRef = new CsdlPropertyRef();
-                        keyRef.setName(odataPropName);
-                        keys.add(keyRef);
-                    }
-                }
-                // Add navigation properties for columns ending with _ID
-                List<org.apache.olingo.commons.api.edm.provider.CsdlNavigationProperty> navProps = new java.util.ArrayList<>();
-                for (ColumnInfo col : table.columns) {
-                    // Special case: ensure "CATEGORYID" in "PRODUCT" adds navigation property "Category" to "Category"
-                    if (table.tableName.equalsIgnoreCase("PRODUCT") && col.columnName.equalsIgnoreCase("CATEGORYID")) {
-                        FullQualifiedName targetFqn = new FullQualifiedName(NAMESPACE, "Category");
-                        navProps.add(new org.apache.olingo.commons.api.edm.provider.CsdlNavigationProperty()
-                            .setName("Category")
-                            .setType(targetFqn)
-                            .setNullable(true));
+                    if (tableName.equalsIgnoreCase("flyway_schema_history")) {
                         continue;
                     }
-                    if (col.columnName.endsWith("_ID") || col.columnName.endsWith("ID")) {
-                        String targetTable;
-                        if (col.columnName.endsWith("_ID")) {
-                            targetTable = col.columnName.substring(0, col.columnName.length() - 3);
-                        } else {
-                            targetTable = col.columnName.substring(0, col.columnName.length() - 2);
-                        }
-                        String navName = formatODataTypeName(targetTable);
-                        for (TableInfo t : tables) {
-                            if (formatODataTypeName(t.tableName).equals(navName)) {
-                                FullQualifiedName targetFqn = new FullQualifiedName(NAMESPACE, navName);
-                                navProps.add(new org.apache.olingo.commons.api.edm.provider.CsdlNavigationProperty()
-                                    .setName(navName)
-                                    .setType(targetFqn)
-                                    .setNullable(true));
-                            }
-                        }
+                    TableInfo table = new TableInfo(tableName);
+                    cachedTables.put(tableName.toUpperCase(), table);
+                }
+            }
+
+            for (TableInfo table : cachedTables.values()) {
+                try (ResultSet rsCols = meta.getColumns(null, null, table.tableName, "%")) {
+                    while (rsCols.next()) {
+                        table.columns.add(new ColumnInfo(rsCols.getString("COLUMN_NAME"), rsCols.getInt("DATA_TYPE")));
                     }
                 }
-                return new CsdlEntityType()
-                    .setName(odataTypeName)
-                    .setKey(keys)
-                    .setProperties(properties)
-                    .setNavigationProperties(navProps);
+
+                try (ResultSet rsPks = meta.getPrimaryKeys(null, null, table.tableName)) {
+                    while (rsPks.next()) {
+                        table.primaryKeys.add(rsPks.getString("COLUMN_NAME"));
+                    }
+                }
+
+                try (ResultSet rsFks = meta.getImportedKeys(null, null, table.tableName)) {
+                    while (rsFks.next()) {
+                        ForeignKeyInfo fk = new ForeignKeyInfo();
+                        fk.fkColumnName = rsFks.getString("FKCOLUMN_NAME");
+                        fk.pkTableName = rsFks.getString("PKTABLE_NAME");
+                        fk.pkColumnName = rsFks.getString("PKCOLUMN_NAME");
+                        table.foreignKeys.add(fk);
+                    }
+                }
+            }
+        }
+        schemaScanned = true;
+    }
+
+    @Override
+    public CsdlEntityType getEntityType(FullQualifiedName entityTypeName) throws ODataException {
+        try {
+            scanDatabaseSchema();
+            TableInfo table = findTableForEntityType(entityTypeName.getName());
+            if (table == null) {
+                return null;
+            }
+
+            List<CsdlProperty> properties = new ArrayList<>();
+            for (ColumnInfo col : table.columns) {
+                properties.add(new CsdlProperty()
+                    .setName(col.columnName)
+                    .setType(mapSqlTypeToEdmType(col.dataType))
+                    .setNullable(true));
+            }
+
+            List<CsdlPropertyRef> keys = new ArrayList<>();
+            for (String pkName : table.primaryKeys) {
+                keys.add(new CsdlPropertyRef().setName(pkName));
+            }
+
+            List<CsdlNavigationProperty> navProps = new ArrayList<>();
+            for (ForeignKeyInfo fk : table.foreignKeys) {
+                String targetTypeName = formatODataTypeName(fk.pkTableName);
+                navProps.add(new CsdlNavigationProperty()
+                    .setName(targetTypeName)
+                    .setType(new FullQualifiedName(NAMESPACE, targetTypeName))
+                    .setNullable(true)
+                    .setPartner(formatODataEntitySetName(table.tableName)));
+            }
+
+            return new CsdlEntityType()
+                .setName(entityTypeName.getName())
+                .setProperties(properties)
+                .setKey(keys)
+                .setNavigationProperties(navProps);
+        } catch (SQLException e) {
+            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+        }
+    }
+
+    @Override
+    public CsdlEntitySet getEntitySet(FullQualifiedName entityContainer, String entitySetName) throws ODataException {
+        try {
+            if (!entityContainer.equals(CONTAINER_FQN)) {
+                return null;
+            }
+            scanDatabaseSchema();
+            TableInfo table = findTableForEntitySet(entitySetName);
+            if (table != null) {
+                CsdlEntitySet csdlEntitySet = new CsdlEntitySet();
+                csdlEntitySet.setName(entitySetName);
+                csdlEntitySet.setType(new FullQualifiedName(NAMESPACE, formatODataTypeName(table.tableName)));
+
+                List<CsdlNavigationPropertyBinding> navBindings = new ArrayList<>();
+                for (ForeignKeyInfo fk : table.foreignKeys) {
+                    String targetEntitySet = formatODataEntitySetName(fk.pkTableName);
+                    navBindings.add(new CsdlNavigationPropertyBinding()
+                        .setPath(formatODataTypeName(fk.pkTableName))
+                        .setTarget(targetEntitySet));
+                }
+                csdlEntitySet.setNavigationPropertyBindings(navBindings);
+
+                return csdlEntitySet;
+            }
+            return null;
+        } catch (SQLException e) {
+            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+        }
+    }
+
+    @Override
+    public CsdlEntityContainer getEntityContainer() throws ODataException {
+        if (entityContainer != null) {
+            return entityContainer;
+        }
+        try {
+            scanDatabaseSchema();
+            List<CsdlEntitySet> entitySets = new ArrayList<>();
+            for (TableInfo table : cachedTables.values()) {
+                CsdlEntitySet entitySet = getEntitySet(CONTAINER_FQN, formatODataEntitySetName(table.tableName));
+                if (entitySet != null) {
+                    entitySets.add(entitySet);
+                }
+            }
+            CsdlEntityContainer container = new CsdlEntityContainer();
+            container.setName(CONTAINER_NAME);
+            container.setEntitySets(entitySets);
+            entityContainer = container;
+            return entityContainer;
+        } catch (SQLException e) {
+            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+        }
+    }
+
+    @Override
+    public List<CsdlSchema> getSchemas() throws ODataException {
+        try {
+            scanDatabaseSchema();
+            CsdlSchema schema = new CsdlSchema();
+            schema.setNamespace(NAMESPACE);
+
+            List<CsdlEntityType> entityTypes = new ArrayList<>();
+            for (TableInfo table : cachedTables.values()) {
+                entityTypes.add(getEntityType(new FullQualifiedName(NAMESPACE, formatODataTypeName(table.tableName))));
+            }
+            schema.setEntityTypes(entityTypes);
+            schema.setEntityContainer(getEntityContainer());
+
+            return Collections.singletonList(schema);
+        } catch (SQLException e) {
+            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+        }
+    }
+
+    @Override
+    public CsdlEntityContainerInfo getEntityContainerInfo(FullQualifiedName entityContainerName) {
+        if (entityContainerName == null || entityContainerName.equals(CONTAINER_FQN)) {
+            return new CsdlEntityContainerInfo().setContainerName(CONTAINER_FQN);
+        }
+        return null;
+    }
+
+    private TableInfo findTableForEntityType(String entityTypeName) {
+        for (TableInfo table : cachedTables.values()) {
+            if (formatODataTypeName(table.tableName).equalsIgnoreCase(entityTypeName)) {
+                return table;
             }
         }
         return null;
     }
 
-    // Helper to map SQL types to Edm types
+    private TableInfo findTableForEntitySet(String entitySetName) {
+        for (TableInfo table : cachedTables.values()) {
+            if (formatODataEntitySetName(table.tableName).equalsIgnoreCase(entitySetName)) {
+                return table;
+            }
+        }
+        return null;
+    }
+
+    private String formatODataTypeName(String tableName) {
+        if (tableName == null || tableName.isEmpty()) return tableName;
+        StringBuilder result = new StringBuilder();
+        boolean capitalizeNext = true;
+        for (char c : tableName.toLowerCase().toCharArray()) {
+            if (c == '_') {
+                capitalizeNext = true;
+            } else if (capitalizeNext) {
+                result.append(Character.toUpperCase(c));
+                capitalizeNext = false;
+            } else {
+                result.append(c);
+            }
+        }
+        return result.toString();
+    }
+
+    private String formatODataEntitySetName(String tableName) {
+        String singularName = formatODataTypeName(tableName);
+        if (singularName.endsWith("y")) {
+            return singularName.substring(0, singularName.length() - 1) + "ies";
+        } else if (singularName.endsWith("s")) {
+            return singularName + "es";
+        } else {
+            return singularName + "s";
+        }
+    }
+
     private FullQualifiedName mapSqlTypeToEdmType(int sqlType) {
         switch (sqlType) {
             case java.sql.Types.INTEGER:
@@ -162,90 +311,12 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             case java.sql.Types.VARCHAR:
             case java.sql.Types.CHAR:
             case java.sql.Types.LONGVARCHAR:
+            case java.sql.Types.NVARCHAR:
+            case java.sql.Types.NCHAR:
+            case java.sql.Types.LONGNVARCHAR:
                 return EdmPrimitiveTypeKind.String.getFullQualifiedName();
             default:
                 return EdmPrimitiveTypeKind.String.getFullQualifiedName();
         }
-    }
-
-    @Override
-    public CsdlEntitySet getEntitySet(FullQualifiedName entityContainer, String entitySetName) {
-        if (!entityContainer.equals(CONTAINER_FQN)) return null;
-        List<TableInfo> tables = scanDatabaseSchema();
-        for (TableInfo table : tables) {
-            String odataSetName = formatODataEntitySetName(table.tableName);
-            if (entitySetName.equals(odataSetName)) {
-                String typeName = formatODataTypeName(table.tableName);
-                FullQualifiedName fqn = new FullQualifiedName(NAMESPACE, typeName);
-                return new CsdlEntitySet()
-                    .setName(odataSetName)
-                    .setType(fqn);
-            }
-        }
-        return null;
-    }
-
-    @Override
-    public CsdlEntityContainer getEntityContainer() {
-        List<TableInfo> tables = scanDatabaseSchema();
-        List<CsdlEntitySet> entitySets = new java.util.ArrayList<>();
-        for (TableInfo table : tables) {
-            String odataName = formatODataEntitySetName(table.tableName);
-            entitySets.add(getEntitySet(CONTAINER_FQN, odataName));
-        }
-        return new CsdlEntityContainer()
-            .setName(CONTAINER_NAME)
-            .setEntitySets(entitySets);
-    }
-
-    // Utility to format table name to OData type name (PascalCase, singular)
-    private String formatODataTypeName(String tableName) {
-        // Use exact DB table name with only first letter capitalized, e.g. "Product", "Category"
-        if (tableName.length() == 0) return tableName;
-        return tableName.substring(0, 1).toUpperCase() + tableName.substring(1).toLowerCase();
-    }
-
-    // Utility to format table name to OData entity set name (PascalCase, plural)
-    // (Removed duplicate implementation)
-
-    // Utility to format column name to OData property name (PascalCase)
-    private String formatODataPropertyName(String colName) {
-        // Preserve DB column name case for OData property name
-        return colName;
-    }
-
-    // Utility to format table name to OData entity set name (PascalCase, plural)
-    private String formatODataEntitySetName(String tableName) {
-        // Return pluralized entity set name for OData ("Products", "Categories")
-        if (tableName.equalsIgnoreCase("PRODUCT")) return "Products";
-        if (tableName.equalsIgnoreCase("CATEGORY")) return "Categories";
-        if (tableName.length() == 0) return tableName;
-        // Fallback: PascalCase + "s"
-        String base = tableName.substring(0, 1).toUpperCase() + tableName.substring(1).toLowerCase();
-        return base.endsWith("s") ? base : base + "s";
-    }
-
-    @Override
-    public List<CsdlSchema> getSchemas() {
-        List<TableInfo> tables = scanDatabaseSchema();
-        List<CsdlEntityType> entityTypes = new java.util.ArrayList<>();
-        for (TableInfo table : tables) {
-            String odataTypeName = formatODataTypeName(table.tableName);
-            FullQualifiedName fqn = new FullQualifiedName(NAMESPACE, odataTypeName);
-            entityTypes.add(getEntityType(fqn));
-        }
-        CsdlSchema schema = new CsdlSchema();
-        schema.setNamespace(NAMESPACE);
-        schema.setEntityTypes(entityTypes);
-        schema.setEntityContainer(getEntityContainer());
-        return Collections.singletonList(schema);
-    }
-
-    @Override
-    public CsdlEntityContainerInfo getEntityContainerInfo(FullQualifiedName entityContainerName) {
-        if (entityContainerName == null || entityContainerName.equals(CONTAINER_FQN)) {
-            return new CsdlEntityContainerInfo().setContainerName(CONTAINER_FQN);
-        }
-        return null;
     }
 }
