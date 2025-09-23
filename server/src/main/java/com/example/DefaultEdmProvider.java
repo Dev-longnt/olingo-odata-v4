@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -36,6 +37,9 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
     private final Map<String, TableInfo> cachedTables = new HashMap<>();
     private boolean schemaScanned = false;
     private CsdlEntityContainer entityContainer;
+
+    @Value("${odata.database.schema:public}")
+    private String databaseSchema;
 
     public static final String NAMESPACE = "OData.Demo";
     public static final String CONTAINER_NAME = "Container";
@@ -51,7 +55,9 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
         List<String> primaryKeys = new ArrayList<>();
         List<ForeignKeyInfo> foreignKeys = new ArrayList<>();
 
-        TableInfo(String tableName) { this.tableName = tableName; }
+        TableInfo(String tableName) {
+            this.tableName = tableName;
+        }
     }
 
     private static class ColumnInfo {
@@ -77,8 +83,8 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
 
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
-            String[] types = {"TABLE"};
-            try (ResultSet rsTables = meta.getTables(null, null, "%", types)) {
+            String[] types = { "TABLE" };
+            try (ResultSet rsTables = meta.getTables(null, databaseSchema, "%", types)) {
                 while (rsTables.next()) {
                     String tableName = rsTables.getString("TABLE_NAME");
                     if (tableName.equalsIgnoreCase("flyway_schema_history")) {
@@ -90,19 +96,19 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             }
 
             for (TableInfo table : cachedTables.values()) {
-                try (ResultSet rsCols = meta.getColumns(null, null, table.tableName, "%")) {
+                try (ResultSet rsCols = meta.getColumns(null, databaseSchema, table.tableName, "%")) {
                     while (rsCols.next()) {
                         table.columns.add(new ColumnInfo(rsCols.getString("COLUMN_NAME"), rsCols.getInt("DATA_TYPE")));
                     }
                 }
 
-                try (ResultSet rsPks = meta.getPrimaryKeys(null, null, table.tableName)) {
+                try (ResultSet rsPks = meta.getPrimaryKeys(null, databaseSchema, table.tableName)) {
                     while (rsPks.next()) {
                         table.primaryKeys.add(rsPks.getString("COLUMN_NAME"));
                     }
                 }
 
-                try (ResultSet rsFks = meta.getImportedKeys(null, null, table.tableName)) {
+                try (ResultSet rsFks = meta.getImportedKeys(null, databaseSchema, table.tableName)) {
                     while (rsFks.next()) {
                         ForeignKeyInfo fk = new ForeignKeyInfo();
                         fk.fkColumnName = rsFks.getString("FKCOLUMN_NAME");
@@ -128,9 +134,9 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             List<CsdlProperty> properties = new ArrayList<>();
             for (ColumnInfo col : table.columns) {
                 properties.add(new CsdlProperty()
-                    .setName(col.columnName)
-                    .setType(mapSqlTypeToEdmType(col.dataType))
-                    .setNullable(true));
+                        .setName(col.columnName)
+                        .setType(mapSqlTypeToEdmType(col.dataType))
+                        .setNullable(true));
             }
 
             List<CsdlPropertyRef> keys = new ArrayList<>();
@@ -142,19 +148,19 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             for (ForeignKeyInfo fk : table.foreignKeys) {
                 String targetTypeName = formatODataTypeName(fk.pkTableName);
                 navProps.add(new CsdlNavigationProperty()
-                    .setName(targetTypeName)
-                    .setType(new FullQualifiedName(NAMESPACE, targetTypeName))
-                    .setNullable(true)
-                    .setPartner(formatODataEntitySetName(table.tableName)));
+                        .setName(targetTypeName)
+                        .setType(new FullQualifiedName(NAMESPACE, targetTypeName))
+                        .setNullable(true));
             }
 
             return new CsdlEntityType()
-                .setName(entityTypeName.getName())
-                .setProperties(properties)
-                .setKey(keys)
-                .setNavigationProperties(navProps);
+                    .setName(entityTypeName.getName())
+                    .setProperties(properties)
+                    .setKey(keys)
+                    .setNavigationProperties(navProps);
         } catch (SQLException e) {
-            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+            throw new ODataApplicationException("Error accessing database metadata",
+                    HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
         }
     }
 
@@ -175,8 +181,8 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
                 for (ForeignKeyInfo fk : table.foreignKeys) {
                     String targetEntitySet = formatODataEntitySetName(fk.pkTableName);
                     navBindings.add(new CsdlNavigationPropertyBinding()
-                        .setPath(formatODataTypeName(fk.pkTableName))
-                        .setTarget(targetEntitySet));
+                            .setPath(formatODataTypeName(fk.pkTableName))
+                            .setTarget(targetEntitySet));
                 }
                 csdlEntitySet.setNavigationPropertyBindings(navBindings);
 
@@ -184,7 +190,8 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             }
             return null;
         } catch (SQLException e) {
-            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+            throw new ODataApplicationException("Error accessing database metadata",
+                    HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
         }
     }
 
@@ -208,7 +215,8 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             entityContainer = container;
             return entityContainer;
         } catch (SQLException e) {
-            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+            throw new ODataApplicationException("Error accessing database metadata",
+                    HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
         }
     }
 
@@ -228,7 +236,8 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
 
             return Collections.singletonList(schema);
         } catch (SQLException e) {
-            throw new ODataApplicationException("Error accessing database metadata", HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
+            throw new ODataApplicationException("Error accessing database metadata",
+                    HttpStatusCode.INTERNAL_SERVER_ERROR.getStatusCode(), Locale.ENGLISH, e);
         }
     }
 
@@ -259,7 +268,8 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
     }
 
     private String formatODataTypeName(String tableName) {
-        if (tableName == null || tableName.isEmpty()) return tableName;
+        if (tableName == null || tableName.isEmpty())
+            return tableName;
         StringBuilder result = new StringBuilder();
         boolean capitalizeNext = true;
         for (char c : tableName.toLowerCase().toCharArray()) {
@@ -273,6 +283,26 @@ public class DefaultEdmProvider extends CsdlAbstractEdmProvider {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Get the actual database table name for a given OData entity set name
+     * This method provides the reverse mapping from entity set name to database
+     * table name
+     */
+    public String getActualTableNameForEntitySet(String entitySetName) {
+        try {
+            scanDatabaseSchema();
+            for (TableInfo table : cachedTables.values()) {
+                if (formatODataEntitySetName(table.tableName).equalsIgnoreCase(entitySetName)) {
+                    // Return table name with schema prefix
+                    return databaseSchema + "." + table.tableName;
+                }
+            }
+            return null;
+        } catch (SQLException e) {
+            return null;
+        }
     }
 
     private String formatODataEntitySetName(String tableName) {

@@ -39,12 +39,26 @@ import org.apache.olingo.server.api.uri.UriResourceEntitySet;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.sql.Types;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class DefaultProcessor implements EntityCollectionProcessor, EntityProcessor {
-  @Autowired private DataSource dataSource;
+  @Autowired
+  private DataSource dataSource;
+
+  @Autowired
+  private DefaultEdmProvider edmProvider;
+
+  @Value("${odata.database.schema:public}")
+  private String databaseSchema;
 
   private static final Logger logger = LoggerFactory.getLogger(DefaultProcessor.class);
 
@@ -74,14 +88,12 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
       ContextURL contextUrl = ContextURL.with().entitySet(edmEntitySet).build();
 
       final String id = request.getRawBaseUri() + "/" + edmEntitySet.getName();
-      EntityCollectionSerializerOptions opts =
-          EntityCollectionSerializerOptions.with()
-              .id(id)
-              .contextURL(contextUrl)
-              .count(uriInfo.getCountOption())
-              .build();
-      SerializerResult serializerResult =
-          serializer.entityCollection(serviceMetadata, edmEntityType, entitySet, opts);
+      EntityCollectionSerializerOptions opts = EntityCollectionSerializerOptions.with()
+          .id(id)
+          .contextURL(contextUrl)
+          .count(uriInfo.getCountOption())
+          .build();
+      SerializerResult serializerResult = serializer.entityCollection(serviceMetadata, edmEntityType, entitySet, opts);
 
       response.setContent(serializerResult.getContent());
       response.setStatusCode(HttpStatusCode.OK.getStatusCode());
@@ -121,15 +133,13 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
 
     ODataSerializer serializer = odata.createSerializer(responseFormat);
     EdmEntityType edmEntityType = edmEntitySet.getEntityType();
-    ContextURL contextUrl =
-        ContextURL.with()
-            .entitySet(edmEntitySet)
-            .navOrPropertyPath(entity.getId().toString())
-            .build();
+    ContextURL contextUrl = ContextURL.with()
+        .entitySet(edmEntitySet)
+        .navOrPropertyPath(entity.getId().toString())
+        .build();
 
     EntitySerializerOptions options = EntitySerializerOptions.with().contextURL(contextUrl).build();
-    SerializerResult serializerResult =
-        serializer.entity(serviceMetadata, edmEntityType, entity, options);
+    SerializerResult serializerResult = serializer.entity(serviceMetadata, edmEntityType, entity, options);
     java.io.InputStream contentStream = serializerResult.getContent();
     String contentStr;
     java.io.InputStream responseStream;
@@ -171,8 +181,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
       boolean hasExpand = false;
 
       for (String propertyName : edmEntityType.getPropertyNames()) {
-        org.apache.olingo.commons.api.edm.EdmProperty edmProperty =
-            edmEntityType.getStructuralProperty(propertyName);
+        org.apache.olingo.commons.api.edm.EdmProperty edmProperty = edmEntityType.getStructuralProperty(propertyName);
         if (edmProperty != null) {
           if (!selectColumns.isEmpty()) {
             selectColumns.append(", ");
@@ -185,8 +194,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         String expandText = uriInfo.getExpandOption().getText();
         logger.debug("Expand option text: {}", expandText);
 
-        org.apache.olingo.commons.api.edm.EdmNavigationProperty navProp =
-            edmEntityType.getNavigationProperty(expandText);
+        org.apache.olingo.commons.api.edm.EdmNavigationProperty navProp = edmEntityType
+            .getNavigationProperty(expandText);
         if (navProp != null) {
           hasExpand = true;
           EdmBindingTarget target = edmEntitySet.getRelatedBindingTarget(expandText);
@@ -197,8 +206,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
 
             org.apache.olingo.commons.api.edm.EdmEntityType targetEntityType = targetEntitySet.getEntityType();
             for (String propertyName : targetEntityType.getPropertyNames()) {
-              org.apache.olingo.commons.api.edm.EdmProperty targetEdmProperty =
-                  targetEntityType.getStructuralProperty(propertyName);
+              org.apache.olingo.commons.api.edm.EdmProperty targetEdmProperty = targetEntityType
+                  .getStructuralProperty(propertyName);
               if (targetEdmProperty != null) {
                 selectColumns.append(", ");
                 selectColumns
@@ -259,7 +268,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
       List<Object> filterParams = new ArrayList<>();
       if (uriInfo.getFilterOption() != null) {
         String filterExpression = uriInfo.getFilterOption().getText();
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\w+)\\s+(gt|lt|eq)\\s+([\\w.'0-9]+)").matcher(filterExpression);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\w+)\\s+(gt|lt|eq)\\s+([\\w.'0-9]+)")
+            .matcher(filterExpression);
         if (m.matches()) {
           String property = m.group(1);
           String operator = m.group(2);
@@ -307,7 +317,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
           if (edmEntityType.getProperty(property) != null) {
             String direction = parts.length > 1 ? parts[1].toUpperCase() : "ASC";
             if (direction.equals("ASC") || direction.equals("DESC")) {
-              sql.append(" ORDER BY ").append(mainTableAlias).append(".").append(property).append(" ").append(direction);
+              sql.append(" ORDER BY ").append(mainTableAlias).append(".").append(property).append(" ")
+                  .append(direction);
             }
           } else {
             logger.warn("OrderBy property '{}' not found in entity type '{}'", property, edmEntityType.getName());
@@ -319,11 +330,13 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         int paramCount = 0;
         if (keyParams != null && !keyParams.isEmpty()) {
           paramCount++;
-          stmt.setObject(paramCount, Integer.parseInt(keyParams.getFirst().getText()));
+          String keyCol = edmEntityType.getKeyPropertyRefs().getFirst().getName();
+          Object keyValue = convertKeyValue(keyParams.getFirst().getText(), edmEntityType.getProperty(keyCol));
+          setParameterSafely(stmt, paramCount, keyValue);
         }
         for (Object param : filterParams) {
           paramCount++;
-          stmt.setObject(paramCount, param);
+          setParameterSafely(stmt, paramCount, param);
         }
 
         ResultSet rs = stmt.executeQuery();
@@ -337,8 +350,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
         while (rs.next()) {
           Entity currentEntity = new Entity();
           for (String propertyName : edmEntityType.getPropertyNames()) {
-            org.apache.olingo.commons.api.edm.EdmProperty edmProperty =
-                edmEntityType.getStructuralProperty(propertyName);
+            org.apache.olingo.commons.api.edm.EdmProperty edmProperty = edmEntityType
+                .getStructuralProperty(propertyName);
             if (edmProperty != null) {
               Object value = getResultSetValue(rs, propertyName, edmProperty.getType());
               if (value != null) {
@@ -348,8 +361,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
           }
 
           try {
-            List<org.apache.olingo.commons.api.edm.EdmKeyPropertyRef> keyRefs =
-                edmEntityType.getKeyPropertyRefs();
+            List<org.apache.olingo.commons.api.edm.EdmKeyPropertyRef> keyRefs = edmEntityType.getKeyPropertyRefs();
             if (!keyRefs.isEmpty()) {
               String keyName = keyRefs.getFirst().getName();
               Object keyValue = rs.getObject(keyName);
@@ -363,8 +375,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
 
           if (hasExpand) {
             String expandText = uriInfo.getExpandOption().getText();
-            org.apache.olingo.commons.api.edm.EdmNavigationProperty navProp =
-                edmEntityType.getNavigationProperty(expandText);
+            org.apache.olingo.commons.api.edm.EdmNavigationProperty navProp = edmEntityType
+                .getNavigationProperty(expandText);
             if (navProp != null) {
               EdmBindingTarget target = edmEntitySet.getRelatedBindingTarget(expandText);
               if (target instanceof EdmEntitySet) {
@@ -373,8 +385,8 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
                 Entity expandedEntity = new Entity();
                 boolean expandedEntityHasData = false;
                 for (String propertyName : targetEntityType.getPropertyNames()) {
-                  org.apache.olingo.commons.api.edm.EdmProperty targetEdmProperty =
-                      targetEntityType.getStructuralProperty(propertyName);
+                  org.apache.olingo.commons.api.edm.EdmProperty targetEdmProperty = targetEntityType
+                      .getStructuralProperty(propertyName);
                   if (targetEdmProperty != null) {
                     String aliasedColumnName = navProp.getName() + "_" + propertyName;
                     Object value = getResultSetValue(rs, aliasedColumnName, targetEdmProperty.getType());
@@ -411,18 +423,27 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
   }
 
   private String getTableNameFromEntitySetName(String entitySetName) {
+    // Use the EdmProvider to get the actual table name from the database schema
+    String actualTableName = edmProvider.getActualTableNameForEntitySet(entitySetName);
+    if (actualTableName != null) {
+      return actualTableName;
+    }
+
+    // Fallback to the original logic if table not found in schema
+    logger.warn("Table not found in database schema for entity set: {}, using fallback logic", entitySetName);
     String lowerCaseName = entitySetName.toLowerCase();
     String singular;
     if (lowerCaseName.endsWith("ies")) {
-        singular = lowerCaseName.substring(0, lowerCaseName.length() - 3) + "y";
+      singular = lowerCaseName.substring(0, lowerCaseName.length() - 3) + "y";
     } else if (lowerCaseName.endsWith("es")) {
-        singular = lowerCaseName.substring(0, lowerCaseName.length() - 2);
+      singular = lowerCaseName.substring(0, lowerCaseName.length() - 2);
     } else if (lowerCaseName.endsWith("s")) {
-        singular = lowerCaseName.substring(0, lowerCaseName.length() - 1);
+      singular = lowerCaseName.substring(0, lowerCaseName.length() - 1);
     } else {
-        singular = lowerCaseName;
+      singular = lowerCaseName;
     }
-    return singular.toUpperCase();
+    // Also include schema prefix in fallback
+    return databaseSchema + "." + singular.toLowerCase();
   }
 
   private Object getResultSetValue(
@@ -472,9 +493,11 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
 
     try (Connection conn = dataSource.getConnection()) {
       java.io.InputStream bodyStream = request.getBody();
-      String jsonString = new String(bodyStream.readAllBytes(), StandardCharsets.UTF_8);
-      JSONObject json = new JSONObject(jsonString);
-      logger.debug("createEntity raw JSON: {}", jsonString);
+      String bodyString = new String(bodyStream.readAllBytes(), StandardCharsets.UTF_8);
+      logger.debug("createEntity raw body: {}", bodyString);
+
+      // Parse data based on content type
+      java.util.Map<String, Object> entityData = parseRequestBody(bodyString, requestFormat);
 
       StringBuilder columns = new StringBuilder();
       StringBuilder placeholders = new StringBuilder();
@@ -488,12 +511,13 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
           }
           columns.append(propName);
           placeholders.append("?");
-          String jsonKey = findJsonKey(json, propName);
-          if (json.has(jsonKey)) {
-            values.add(json.get(jsonKey));
-          } else {
-            values.add(null);
+
+          Object value = entityData.get(propName);
+          if (value == null) {
+            // Try case-insensitive lookup
+            value = findValueCaseInsensitive(entityData, propName);
           }
+          values.add(value);
         }
       }
 
@@ -501,7 +525,7 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
 
       try (PreparedStatement stmt = conn.prepareStatement(sql)) {
         for (int i = 0; i < values.size(); i++) {
-          stmt.setObject(i + 1, values.get(i));
+          setParameterSafely(stmt, i + 1, values.get(i));
         }
         stmt.executeUpdate();
       }
@@ -510,18 +534,23 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
       List<org.apache.olingo.commons.api.edm.EdmKeyPropertyRef> keyRefs = edmEntityType.getKeyPropertyRefs();
       if (!keyRefs.isEmpty()) {
         String keyName = keyRefs.getFirst().getName();
-        String jsonKey = findJsonKey(json, keyName);
-        if (json.has(jsonKey)) {
-          Object newEntityId = json.get(jsonKey);
+        Object newEntityId = entityData.get(keyName);
+        if (newEntityId == null) {
+          newEntityId = findValueCaseInsensitive(entityData, keyName);
+        }
+        if (newEntityId != null) {
           entity.setId(java.net.URI.create(edmEntitySet.getName() + "(" + newEntityId + ")"));
         }
       }
 
       for (String propName : edmEntityType.getPropertyNames()) {
         if (edmEntityType.getNavigationProperty(propName) == null) {
-          String jsonKey = findJsonKey(json, propName);
-          if (json.has(jsonKey)) {
-            entity.addProperty(new Property(null, propName, ValueType.PRIMITIVE, json.get(jsonKey)));
+          Object value = entityData.get(propName);
+          if (value == null) {
+            value = findValueCaseInsensitive(entityData, propName);
+          }
+          if (value != null) {
+            entity.addProperty(new Property(null, propName, ValueType.PRIMITIVE, value));
           }
         }
       }
@@ -541,13 +570,199 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
     }
   }
 
-  private String findJsonKey(JSONObject json, String propName) {
-    for (String key : json.keySet()) {
-      if (key.equalsIgnoreCase(propName)) {
-        return key;
+  /**
+   * Parse request body based on content type (XML or JSON)
+   */
+  private java.util.Map<String, Object> parseRequestBody(String bodyString, ContentType contentType)
+      throws ODataApplicationException {
+    java.util.Map<String, Object> result = new java.util.HashMap<>();
+
+    try {
+      if (contentType != null && contentType.isCompatible(ContentType.APPLICATION_XML)) {
+        // Parse XML (OData Atom format)
+        result = parseXmlBody(bodyString);
+      } else {
+        // Parse JSON
+        result = parseJsonBody(bodyString);
+      }
+    } catch (Exception e) {
+      logger.error("Error parsing request body: {}", e.getMessage(), e);
+      throw new ODataApplicationException("Error parsing request body: " + e.getMessage(), 400, null);
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse XML body (OData Atom format)
+   */
+  private java.util.Map<String, Object> parseXmlBody(String xmlString) throws Exception {
+    java.util.Map<String, Object> result = new java.util.HashMap<>();
+
+    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+    factory.setNamespaceAware(true);
+    DocumentBuilder builder = factory.newDocumentBuilder();
+
+    java.io.ByteArrayInputStream inputStream = new java.io.ByteArrayInputStream(
+        xmlString.getBytes(StandardCharsets.UTF_8));
+    Document doc = builder.parse(inputStream);
+
+    // Find the properties element in OData Atom format
+    NodeList propertiesNodes = doc.getElementsByTagNameNS("http://docs.oasis-open.org/odata/ns/metadata", "properties");
+    if (propertiesNodes.getLength() > 0) {
+      Element propertiesElement = (Element) propertiesNodes.item(0);
+      NodeList childNodes = propertiesElement.getChildNodes();
+
+      for (int i = 0; i < childNodes.getLength(); i++) {
+        if (childNodes.item(i) instanceof Element) {
+          Element propertyElement = (Element) childNodes.item(i);
+          String propertyName = propertyElement.getLocalName();
+          String propertyValue = propertyElement.getTextContent();
+          String dataType = propertyElement.getAttributeNS("http://docs.oasis-open.org/odata/ns/metadata", "type");
+
+          // Convert value based on type
+          Object convertedValue = convertXmlValue(propertyValue, dataType);
+          result.put(propertyName, convertedValue);
+
+          logger.debug("Parsed XML property: {} = {} (type: {})", propertyName, convertedValue, dataType);
+        }
       }
     }
-    return propName; // fallback
+
+    return result;
+  }
+
+  /**
+   * Parse JSON body
+   */
+  private java.util.Map<String, Object> parseJsonBody(String jsonString) throws Exception {
+    java.util.Map<String, Object> result = new java.util.HashMap<>();
+    JSONObject json = new JSONObject(jsonString);
+
+    for (String key : json.keySet()) {
+      result.put(key, json.get(key));
+    }
+
+    return result;
+  }
+
+  /**
+   * Convert XML value based on OData type
+   */
+  private Object convertXmlValue(String value, String odataType) {
+    if (value == null || value.isEmpty()) {
+      return null;
+    }
+
+    try {
+      if (odataType == null || odataType.isEmpty()) {
+        return value; // Default to string
+      }
+
+      switch (odataType) {
+        case "Int32":
+          return Integer.parseInt(value);
+        case "Int64":
+          return Long.parseLong(value);
+        case "Double":
+          return Double.parseDouble(value);
+        case "Boolean":
+          return Boolean.parseBoolean(value);
+        case "DateTimeOffset":
+          // Parse ISO 8601 date format and convert to Timestamp for PostgreSQL
+          // compatibility
+          return java.sql.Timestamp.from(java.time.OffsetDateTime.parse(value).toInstant());
+        case "Date":
+          return java.sql.Date.valueOf(java.time.LocalDate.parse(value));
+        default:
+          return value;
+      }
+    } catch (Exception e) {
+      logger.warn("Could not convert value '{}' with type '{}': {}", value, odataType, e.getMessage());
+      return value; // Fallback to string
+    }
+  }
+
+  /**
+   * Find value with case-insensitive key lookup
+   */
+  private Object findValueCaseInsensitive(java.util.Map<String, Object> map, String key) {
+    for (java.util.Map.Entry<String, Object> entry : map.entrySet()) {
+      if (entry.getKey().equalsIgnoreCase(key)) {
+        return entry.getValue();
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Convert URL key value to proper data type based on EDM property type
+   */
+  private Object convertKeyValue(String keyValueString, org.apache.olingo.commons.api.edm.EdmElement edmElement) {
+    if (keyValueString == null || edmElement == null) {
+      return keyValueString;
+    }
+
+    try {
+      String typeName = edmElement.getType().getName();
+
+      switch (typeName) {
+        case "Int32":
+          return Integer.parseInt(keyValueString);
+        case "Int64":
+          return Long.parseLong(keyValueString);
+        case "Double":
+          return Double.parseDouble(keyValueString);
+        case "Boolean":
+          return Boolean.parseBoolean(keyValueString);
+        case "String":
+          return keyValueString;
+        default:
+          logger.debug("Unknown EDM type '{}' for key conversion, using string: {}", typeName, keyValueString);
+          return keyValueString;
+      }
+    } catch (Exception e) {
+      logger.warn("Could not convert key value '{}' to type '{}': {}", keyValueString, edmElement.getType().getName(),
+          e.getMessage());
+      return keyValueString; // Fallback to string
+    }
+  }
+
+  /**
+   * Set parameter in PreparedStatement with proper type handling for PostgreSQL
+   */
+  private void setParameterSafely(PreparedStatement stmt, int parameterIndex, Object value) throws SQLException {
+    if (value == null) {
+      stmt.setNull(parameterIndex, Types.NULL);
+    } else if (value instanceof String) {
+      stmt.setString(parameterIndex, (String) value);
+    } else if (value instanceof Integer) {
+      stmt.setInt(parameterIndex, (Integer) value);
+    } else if (value instanceof Long) {
+      stmt.setLong(parameterIndex, (Long) value);
+    } else if (value instanceof Double) {
+      stmt.setDouble(parameterIndex, (Double) value);
+    } else if (value instanceof Boolean) {
+      stmt.setBoolean(parameterIndex, (Boolean) value);
+    } else if (value instanceof java.sql.Timestamp) {
+      stmt.setTimestamp(parameterIndex, (java.sql.Timestamp) value);
+    } else if (value instanceof java.sql.Date) {
+      stmt.setDate(parameterIndex, (java.sql.Date) value);
+    } else if (value instanceof java.time.Instant) {
+      // Convert Instant to Timestamp for PostgreSQL
+      stmt.setTimestamp(parameterIndex, java.sql.Timestamp.from((java.time.Instant) value));
+    } else if (value instanceof java.time.LocalDate) {
+      // Convert LocalDate to Date for PostgreSQL
+      stmt.setDate(parameterIndex, java.sql.Date.valueOf((java.time.LocalDate) value));
+    } else if (value instanceof java.time.OffsetDateTime) {
+      // Convert OffsetDateTime to Timestamp for PostgreSQL
+      stmt.setTimestamp(parameterIndex, java.sql.Timestamp.from(((java.time.OffsetDateTime) value).toInstant()));
+    } else {
+      // Fallback to generic setObject
+      logger.debug("Using generic setObject for parameter {} with type {}", parameterIndex,
+          value.getClass().getSimpleName());
+      stmt.setObject(parameterIndex, value);
+    }
   }
 
   @Override
@@ -565,44 +780,50 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
     List<UriParameter> keyPredicates = uriResourceEntitySet.getKeyPredicates();
     EdmEntityType edmEntityType = edmEntitySet.getEntityType();
     String tableName = getTableNameFromEntitySetName(edmEntitySet.getName());
-    List<org.apache.olingo.commons.api.edm.EdmKeyPropertyRef> keyRefs =
-        edmEntityType.getKeyPropertyRefs();
+    List<org.apache.olingo.commons.api.edm.EdmKeyPropertyRef> keyRefs = edmEntityType.getKeyPropertyRefs();
 
     try (Connection conn = dataSource.getConnection()) {
       java.io.InputStream bodyStream = request.getBody();
-      String jsonString = new String(bodyStream.readAllBytes(), StandardCharsets.UTF_8);
-      JSONObject json = new JSONObject(jsonString);
-      logger.debug("updateEntity raw JSON: {}", jsonString);
+      String bodyString = new String(bodyStream.readAllBytes(), StandardCharsets.UTF_8);
+      logger.debug("updateEntity raw body: {}", bodyString);
 
-      JSONObject normalizedJson = new JSONObject();
-      for (String propName : edmEntityType.getPropertyNames()) {
-        String jsonKey = findJsonKey(json, propName);
-        if (json.has(jsonKey)) {
-          normalizedJson.put(propName, json.get(jsonKey));
-        }
-      }
+      // Parse data based on content type (same as createEntity)
+      java.util.Map<String, Object> entityData = parseRequestBody(bodyString, requestFormat);
 
       StringBuilder updateSql = new StringBuilder("UPDATE " + tableName + " SET ");
       List<Object> values = new ArrayList<>();
       int propCount = 0;
       for (String propName : edmEntityType.getPropertyNames()) {
-        if (normalizedJson.has(propName)) {
+        Object value = entityData.get(propName);
+        if (value == null) {
+          // Try case-insensitive lookup
+          value = findValueCaseInsensitive(entityData, propName);
+        }
+        if (value != null) {
           if (propCount++ > 0) {
             updateSql.append(", ");
           }
           updateSql.append(propName).append(" = ?");
-          values.add(normalizedJson.get(propName));
+          values.add(value);
         }
+      }
+
+      if (propCount == 0) {
+        logger.warn("No properties to update for entity");
+        response.setStatusCode(HttpStatusCode.NO_CONTENT.getStatusCode());
+        return;
       }
 
       String keyCol = keyRefs.getFirst().getName();
       updateSql.append(" WHERE ").append(keyCol).append(" = ?");
-      Object keyValue = keyPredicates.getFirst().getText();
+      Object keyValue = convertKeyValue(keyPredicates.getFirst().getText(), edmEntityType.getProperty(keyCol));
       values.add(keyValue);
+
+      logger.debug("updateEntity SQL: {}", updateSql.toString());
 
       try (PreparedStatement stmt = conn.prepareStatement(updateSql.toString())) {
         for (int i = 0; i < values.size(); i++) {
-          stmt.setObject(i + 1, values.get(i));
+          setParameterSafely(stmt, i + 1, values.get(i));
         }
         stmt.executeUpdate();
       }
@@ -632,12 +853,12 @@ public class DefaultProcessor implements EntityCollectionProcessor, EntityProces
           "Unsupported composite key.", HttpStatusCode.BAD_REQUEST.getStatusCode(), null);
     }
     String keyCol = keyRefs.getFirst().getName();
-    Object keyValue = keyPredicates.getFirst().getText();
+    Object keyValue = convertKeyValue(keyPredicates.getFirst().getText(), edmEntityType.getProperty(keyCol));
 
     try (Connection conn = dataSource.getConnection()) {
       String sql = "DELETE FROM " + tableName + " WHERE " + keyCol + " = ?";
       try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-        stmt.setObject(1, keyValue);
+        setParameterSafely(stmt, 1, keyValue);
         stmt.executeUpdate();
       }
       response.setStatusCode(HttpStatusCode.NO_CONTENT.getStatusCode());
