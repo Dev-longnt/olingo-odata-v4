@@ -28,10 +28,68 @@ This project implements a dynamic OData v4 server using Apache Olingo, Spring Bo
 
 ## How to Run
 
+### Local Development
+
 1. Build: `./gradlew build`
 2. Run server: `./gradlew bootRun`
 3. Test: `./gradlew test`
 4. OData endpoint: `/odata/`
+
+### Docker Deployment
+
+#### Build and Run Locally
+```bash
+# Build Docker image
+docker build -f server/Dockerfile -t olingo-odata-v4-server .
+
+# Run container
+docker run -p 8080:8080 olingo-odata-v4-server
+```
+
+#### Using Docker Hub Image
+```bash
+# Pull and run from Docker Hub
+docker pull <dockerhub-username>/olingo-odata-v4-server:latest
+docker run -p 8080:8080 <dockerhub-username>/olingo-odata-v4-server:latest
+```
+
+#### Docker Compose (Optional)
+```yaml
+version: '3.8'
+services:
+  odata-server:
+    image: <dockerhub-username>/olingo-odata-v4-server:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+### CI/CD Pipeline
+
+This project includes GitHub Actions workflows for:
+
+- **CI**: Automated testing on every push/PR
+- **Docker Release**: Automated Docker image building and publishing to Docker Hub on tags
+
+#### Required Secrets
+Configure these secrets in your GitHub repository:
+- `DOCKERHUB_USERNAME`: Your Docker Hub username
+- `DOCKERHUB_TOKEN`: Your Docker Hub access token
+
+#### Deployment Process
+1. Create a tag: `git tag v1.0.0`
+2. Push tag: `git push origin v1.0.0`
+3. GitHub Actions will automatically build and push to Docker Hub
+
+### Health Check
+- Health endpoint: `http://localhost:8080/actuator/health`
+- Metrics endpoint: `http://localhost:8080/actuator/metrics`
 
 ## Contact
 
