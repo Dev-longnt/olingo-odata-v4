@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  odata-server:
+    image: odata-server:latest
+    container_name: odata-server-container
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Spring Boot configuration
+      SPRING_PROFILES_ACTIVE: ${ENVIRONMENT:-production}
+      SERVER_PORT: 8080
+      
+      # Database configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-54.169.24.95}:5432/${DB_NAME:-mydb}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-admin}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-secret}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
+      
+      # OData configuration
+      ODATA_DATABASE_SCHEMA: ${DB_SCHEMA:-fec_csm}
+      ODATA_BASE_URL: ${ODATA_BASE_URL:-http://localhost:8080/odata/}
+      
+      # JPA configuration
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_JPA_SHOW_SQL: false
+      
+      # Actuator configuration
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: when-authorized
+      MANAGEMENT_HEALTH_DEFAULTS_ENABLED: true
+      
+      # Logging configuration
+      LOGGING_LEVEL_COM_EXAMPLE: ${LOG_LEVEL:-INFO}
+      LOGGING_LEVEL_ORG_APACHE_OLINGO: WARN
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: WARN
+      
+      # JVM configuration
+      JAVA_OPTS: -Xms512m -Xmx1g -XX:+UseG1GC -XX:+UseStringDeduplication
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+      
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+          
+    networks:
+      - odata-network
+      
+    volumes:
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+      # Optional: Mount configuration files
+      - ./config:/app/config:ro
+      
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.odata.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.odata.entrypoints=web"
+      - "traefik.http.services.odata.loadbalancer.server.port=8080"
+
+networks:
+  odata-network:
+    driver: bridge
+    
+volumes:
+  logs:
+    driver: local
+  config:
+    driver: local
