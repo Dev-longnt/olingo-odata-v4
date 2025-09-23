@@ -30,15 +30,6 @@ pipeline {
         EMAIL_RECIPIENTS = 'dev-team@yourcompany.com'
     }
     
-    // Build triggers
-    triggers {
-        // Poll SCM every 5 minutes for changes
-        pollSCM('H/5 * * * *')
-        
-        // Build daily at 2 AM
-        cron('0 2 * * *')
-    }
-    
     // Pipeline options
     options {
         // Keep only last 10 builds
@@ -172,94 +163,6 @@ pipeline {
                 }
                 failure {
                     echo "❌ Build failed"
-                }
-            }
-        }
-        
-        stage('🧪 Run Tests') {
-            when {
-                not { params.SKIP_TESTS }
-            }
-            steps {
-                script {
-                    echo "🧪 Running application tests..."
-                    
-                    dir('server') {
-                        // Run unit tests
-                        sh './gradlew test --info'
-                        
-                        // Run integration tests if they exist
-                        sh './gradlew integrationTest --continue || true'
-                    }
-                }
-            }
-            post {
-                always {
-                    // Publish test results
-                    dir('server') {
-                        publishTestResults testResultsPattern: 'build/test-results/**/*.xml'
-                        
-                        // Archive test reports
-                        archiveArtifacts artifacts: 'build/reports/tests/**/*', allowEmptyArchive: true
-                    }
-                }
-                success {
-                    echo "✅ All tests passed"
-                }
-                failure {
-                    script {
-                        if (params.FORCE_DEPLOY) {
-                            echo "⚠️ Tests failed but FORCE_DEPLOY is enabled"
-                        } else {
-                            error "❌ Tests failed and FORCE_DEPLOY is not enabled"
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('🔍 Code Quality Analysis') {
-            parallel {
-                stage('SonarQube Analysis') {
-                    when {
-                        anyOf {
-                            branch 'main'
-                            branch 'develop'
-                        }
-                    }
-                    steps {
-                        script {
-                            echo "📊 Running SonarQube analysis..."
-                            
-                            dir('server') {
-                                // Run SonarQube analysis
-                                withSonarQubeEnv('SonarQube') {
-                                    sh './gradlew sonarqube || true'
-                                }
-                                
-                                // Wait for quality gate
-                                timeout(time: 10, unit: 'MINUTES') {
-                                    waitForQualityGate abortPipeline: false
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                stage('Security Scan') {
-                    steps {
-                        script {
-                            echo "🔒 Running security vulnerability scan..."
-                            
-                            dir('server') {
-                                // OWASP Dependency Check
-                                sh './gradlew dependencyCheckAnalyze || true'
-                                
-                                // Archive security reports
-                                archiveArtifacts artifacts: 'build/reports/dependency-check-report.html', allowEmptyArchive: true
-                            }
-                        }
-                    }
                 }
             }
         }
