@@ -212,7 +212,7 @@ pipeline {
                 anyOf {
                     branch 'main'
                     branch 'develop'
-                    params.FORCE_DEPLOY
+                    expression { return params.FORCE_DEPLOY }
                 }
             }
             steps {
@@ -244,7 +244,7 @@ pipeline {
                 anyOf {
                     branch 'main'
                     branch 'develop'
-                    params.FORCE_DEPLOY
+                    expression { return params.FORCE_DEPLOY }
                 }
             }
             steps {
@@ -280,6 +280,7 @@ pipeline {
                 anyOf {
                     branch 'main'
                     branch 'develop'
+                    expression { return params.FORCE_DEPLOY }
                 }
             }
             steps {
@@ -406,7 +407,9 @@ def deployLocally(containerName, hostPort) {
 def deployRemotely(deployHost, containerName, hostPort) {
     echo "🌐 Deploying to remote server: ${deployHost}..."
     
-    withCredentials([sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
+    // Check if SSH credentials are available
+    try {
+        withCredentials([sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
         sh """
             # Transfer Docker image to remote server
             echo "📦 Transferring Docker image to ${deployHost}..."
@@ -446,39 +449,54 @@ def deployRemotely(deployHost, containerName, hostPort) {
                 echo "✅ Container ${containerName} deployed on ${deployHost}:${hostPort}"
 EOF
         """
+        }
+    } catch (Exception e) {
+        echo "❌ SSH credentials not found or deployment failed: ${e.getMessage()}"
+        echo "💡 Please configure 'deploy-ssh-key' credentials in Jenkins"
+        error("Remote deployment failed")
     }
 }
 
 def sendNotification(status, title, message) {
     def color = status == 'SUCCESS' ? 'good' : (status == 'FAILURE' ? 'danger' : 'warning')
     
-    // Slack notification
-    slackSend(
-        channel: env.SLACK_CHANNEL,
-        color: color,
-        message: """
+    // Try Slack notification if plugin is available
+    try {
+        slackSend(
+            channel: env.SLACK_CHANNEL,
+            color: color,
+            message: """
 ${title}
 Environment: ${params.DEPLOY_ENVIRONMENT}
 Build: #${env.BUILD_NUMBER}
-Branch: ${env.GIT_BRANCH}
+Branch: ${env.GIT_BRANCH ?: 'unknown'}
 ${message}
-        """
-    )
+            """
+        )
+        echo "✅ Slack notification sent"
+    } catch (Exception e) {
+        echo "⚠️ Slack notification failed: ${e.getMessage()}"
+    }
     
-    // Email notification for failures
+    // Try email notification for failures
     if (status == 'FAILURE') {
-        emailext(
-            subject: "${title} - Build #${env.BUILD_NUMBER}",
-            body: """
+        try {
+            emailext(
+                subject: "${title} - Build #${env.BUILD_NUMBER}",
+                body: """
 <h2>${title}</h2>
 <p><strong>Environment:</strong> ${params.DEPLOY_ENVIRONMENT}</p>
 <p><strong>Build Number:</strong> #${env.BUILD_NUMBER}</p>
-<p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
+<p><strong>Branch:</strong> ${env.GIT_BRANCH ?: 'unknown'}</p>
 <p><strong>Message:</strong> ${message}</p>
 <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-            """,
-            to: env.EMAIL_RECIPIENTS,
-            mimeType: 'text/html'
-        )
+                """,
+                to: env.EMAIL_RECIPIENTS,
+                mimeType: 'text/html'
+            )
+            echo "✅ Email notification sent"
+        } catch (Exception e) {
+            echo "⚠️ Email notification failed: ${e.getMessage()}"
+        }
     }
 }
