@@ -102,10 +102,10 @@ pipeline {
                     
                     dir('server') {
                         // Clean previous builds
-                        sh './gradlew clean'
+                        sh '../gradlew clean'
                         
                         // Build application
-                        sh './gradlew build -x test --info'
+                        sh '../gradlew build -x test --info'
                         
                         // Check if JAR was created
                         sh '''
