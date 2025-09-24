@@ -156,15 +156,9 @@ pipeline {
             }
             post {
                 success {
-                    stage('🧹 Cleanup Docker') {
-                        steps {
-                            script {
-                                echo "✅ Deployment to ${params.DEPLOY_ENVIRONMENT} completed successfully"
-                                echo "🧹 Removing unused Docker resources..."
-                                sh 'docker system prune -af --volumes || true'
-                            }
-                        }
-                    }
+                    echo "✅ Deployment to ${params.DEPLOY_ENVIRONMENT} completed successfully"
+                    echo "🧹 Removing unused Docker resources..."
+                    sh 'docker system prune -af --volumes || true'
                 }
                 failure {
                     echo "❌ Deployment to ${params.DEPLOY_ENVIRONMENT} failed"
