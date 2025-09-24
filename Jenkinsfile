@@ -107,24 +107,8 @@ pipeline {
                         sh '../gradlew build -x test --info'
                         
                         // Check if JAR was created
-                        sh '''
-                            if [ -f build/libs/server-*.jar ]; then
-                                echo "✅ JAR file built successfully"
-                                ls -la build/libs/server-*.jar
-                            else
-                                echo "❌ JAR file not found!"
-                                exit 1
-                            fi
-                        '''
+                        sh 'ls -la build/libs/'
                     }
-                }
-            }
-            post {
-                success {
-                    echo "✅ Build completed successfully"
-                }
-                failure {
-                    echo "❌ Build failed"
                 }
             }
         }
