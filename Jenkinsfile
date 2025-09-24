@@ -54,7 +54,7 @@ pipeline {
         )
         string(
             name: 'DEPLOY_HOST',
-            defaultValue: 'your-server.com',
+            defaultValue: 'localhost',
             description: 'Target deployment server'
         )
         string(
@@ -71,11 +71,6 @@ pipeline {
             name: 'FORCE_DEPLOY',
             defaultValue: false,
             description: 'Force deployment even if tests fail'
-        )
-        booleanParam(
-            name: 'CLEANUP_OLD_CONTAINERS',
-            defaultValue: true,
-            description: 'Remove old containers and images'
         )
     }
     
@@ -96,38 +91,6 @@ pipeline {
                     
                     // Display project structure
                     sh 'find . -name "*.gradle" -o -name "Dockerfile" | head -20'
-                }
-            }
-        }
-        
-        stage('📋 Environment Validation') {
-            steps {
-                script {
-                    echo "🔧 Validating build environment..."
-                    
-                    // Check Java version
-                    sh 'java -version'
-                    
-                    // Check Gradle version
-                    sh 'cd server && ./gradlew --version'
-                    
-                    // Check Docker availability
-                    sh 'docker --version'
-                    
-                    // Validate required files
-                    sh '''
-                        if [ ! -f server/build.gradle ]; then
-                            echo "❌ server/build.gradle not found!"
-                            exit 1
-                        fi
-                        
-                        if [ ! -f server/Dockerfile ]; then
-                            echo "❌ server/Dockerfile not found!"
-                            exit 1
-                        fi
-                        
-                        echo "✅ All required files found"
-                    '''
                 }
             }
         }
@@ -207,38 +170,6 @@ pipeline {
             }
         }
         
-        stage('💾 Save Docker Image') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                    expression { return params.FORCE_DEPLOY }
-                }
-            }
-            steps {
-                script {
-                    echo "💾 Saving Docker image for deployment..."
-                    
-                    // Save Docker image to tar file for transfer
-                    sh """
-                        docker save ${DOCKER_IMAGE}:${DOCKER_TAG} > ${DOCKER_IMAGE}-${DOCKER_TAG}.tar
-                        ls -lh ${DOCKER_IMAGE}-${DOCKER_TAG}.tar
-                    """
-                    
-                    // Archive the image for download
-                    archiveArtifacts artifacts: "${DOCKER_IMAGE}-${DOCKER_TAG}.tar", fingerprint: true
-                }
-            }
-            post {
-                success {
-                    echo "✅ Docker image saved successfully"
-                }
-                failure {
-                    echo "❌ Failed to save Docker image"
-                }
-            }
-        }
-        
         stage('🚀 Deploy to Server') {
             when {
                 anyOf {
@@ -255,14 +186,8 @@ pipeline {
                     def hostPort = params.HOST_PORT ?: env.HOST_PORT
                     def containerName = "${DOCKER_CONTAINER_NAME}-${params.DEPLOY_ENVIRONMENT}"
                     
-                    // Deploy locally or to remote server
-                    if (params.DEPLOY_HOST == 'localhost' || params.DEPLOY_HOST == '127.0.0.1') {
-                        // Local deployment
-                        deployLocally(containerName, hostPort)
-                    } else {
-                        // Remote deployment via SSH
-                        deployRemotely(params.DEPLOY_HOST, containerName, hostPort)
-                    }
+                    // Local deployment
+                    deployLocally(containerName, hostPort)
                 }
             }
             post {
@@ -314,62 +239,6 @@ pipeline {
             }
         }
     }
-    
-    post {
-        always {
-            script {
-                echo "🧹 Cleaning up workspace..."
-                
-                // Clean up Docker images
-                sh """
-                    docker rmi ${DOCKER_IMAGE}:${DOCKER_TAG} || true
-                    docker rmi ${DOCKER_IMAGE}:latest || true
-                    docker system prune -f || true
-                """
-                
-                // Archive build artifacts
-                dir('server') {
-                    archiveArtifacts artifacts: 'build/libs/*.jar', fingerprint: true
-                    archiveArtifacts artifacts: 'build/reports/**/*', allowEmptyArchive: true
-                }
-            }
-        }
-        
-        success {
-            script {
-                echo "🎉 Pipeline completed successfully!"
-                
-                // Send success notification
-                sendNotification('SUCCESS', 
-                    "✅ OData Server deployment to ${params.DEPLOY_ENVIRONMENT} successful",
-                    "Build #${env.BUILD_NUMBER} completed successfully"
-                )
-            }
-        }
-        
-        failure {
-            script {
-                echo "❌ Pipeline failed!"
-                
-                // Send failure notification
-                sendNotification('FAILURE', 
-                    "❌ OData Server deployment to ${params.DEPLOY_ENVIRONMENT} failed",
-                    "Build #${env.BUILD_NUMBER} failed. Please check the logs."
-                )
-            }
-        }
-        
-        unstable {
-            script {
-                echo "⚠️ Pipeline completed with warnings"
-                
-                sendNotification('UNSTABLE', 
-                    "⚠️ OData Server deployment to ${params.DEPLOY_ENVIRONMENT} unstable",
-                    "Build #${env.BUILD_NUMBER} completed with warnings"
-                )
-            }
-        }
-    }
 }
 
 // Helper functions for Docker deployment
@@ -402,101 +271,4 @@ def deployLocally(containerName, hostPort) {
         
         echo "✅ Container ${containerName} deployed locally on port ${hostPort}"
     """
-}
-
-def deployRemotely(deployHost, containerName, hostPort) {
-    echo "🌐 Deploying to remote server: ${deployHost}..."
-    
-    // Check if SSH credentials are available
-    try {
-        withCredentials([sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
-        sh """
-            # Transfer Docker image to remote server
-            echo "📦 Transferring Docker image to ${deployHost}..."
-            scp -i \$SSH_KEY -o StrictHostKeyChecking=no ${env.DOCKER_IMAGE}-${env.DOCKER_TAG}.tar \$SSH_USER@${deployHost}:/tmp/
-            
-            # Deploy on remote server
-            ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@${deployHost} << 'EOF'
-                # Load Docker image
-                docker load < /tmp/${env.DOCKER_IMAGE}-${env.DOCKER_TAG}.tar
-                
-                # Stop and remove existing container
-                docker stop ${containerName} || true
-                docker rm ${containerName} || true
-                
-                # Run new container
-                docker run -d \\
-                    --name ${containerName} \\
-                    --restart unless-stopped \\
-                    -p ${hostPort}:${env.DOCKER_PORT} \\
-                    -e SPRING_PROFILES_ACTIVE=${params.DEPLOY_ENVIRONMENT} \\
-                    -e SPRING_DATASOURCE_URL=jdbc:postgresql://${env.DB_HOST}:5432/${env.DB_NAME} \\
-                    -e SPRING_DATASOURCE_USERNAME=${env.DB_USERNAME} \\
-                    -e SPRING_DATASOURCE_PASSWORD=${env.DB_PASSWORD} \\
-                    -e ODATA_DATABASE_SCHEMA=${env.DB_SCHEMA} \\
-                    ${env.DOCKER_IMAGE}:${env.DOCKER_TAG}
-                
-                # Clean up transferred image file
-                rm -f /tmp/${env.DOCKER_IMAGE}-${env.DOCKER_TAG}.tar
-                
-                # Wait for container to start
-                sleep 10
-                
-                # Check container status
-                docker ps | grep ${containerName}
-                docker logs ${containerName} --tail 20
-                
-                echo "✅ Container ${containerName} deployed on ${deployHost}:${hostPort}"
-EOF
-        """
-        }
-    } catch (Exception e) {
-        echo "❌ SSH credentials not found or deployment failed: ${e.getMessage()}"
-        echo "💡 Please configure 'deploy-ssh-key' credentials in Jenkins"
-        error("Remote deployment failed")
-    }
-}
-
-def sendNotification(status, title, message) {
-    def color = status == 'SUCCESS' ? 'good' : (status == 'FAILURE' ? 'danger' : 'warning')
-    
-    // Try Slack notification if plugin is available
-    try {
-        slackSend(
-            channel: env.SLACK_CHANNEL,
-            color: color,
-            message: """
-${title}
-Environment: ${params.DEPLOY_ENVIRONMENT}
-Build: #${env.BUILD_NUMBER}
-Branch: ${env.GIT_BRANCH ?: 'unknown'}
-${message}
-            """
-        )
-        echo "✅ Slack notification sent"
-    } catch (Exception e) {
-        echo "⚠️ Slack notification failed: ${e.getMessage()}"
-    }
-    
-    // Try email notification for failures
-    if (status == 'FAILURE') {
-        try {
-            emailext(
-                subject: "${title} - Build #${env.BUILD_NUMBER}",
-                body: """
-<h2>${title}</h2>
-<p><strong>Environment:</strong> ${params.DEPLOY_ENVIRONMENT}</p>
-<p><strong>Build Number:</strong> #${env.BUILD_NUMBER}</p>
-<p><strong>Branch:</strong> ${env.GIT_BRANCH ?: 'unknown'}</p>
-<p><strong>Message:</strong> ${message}</p>
-<p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                """,
-                to: env.EMAIL_RECIPIENTS,
-                mimeType: 'text/html'
-            )
-            echo "✅ Email notification sent"
-        } catch (Exception e) {
-            echo "⚠️ Email notification failed: ${e.getMessage()}"
-        }
-    }
 }
