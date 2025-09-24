@@ -23,11 +23,6 @@ pipeline {
         
         // Deployment settings
         DEPLOY_HOST = 'your-server.com'  // Your target server
-        DEPLOY_USER = 'deploy'           // SSH user for deployment
-        
-        // Notification settings
-        SLACK_CHANNEL = '#deployments'
-        EMAIL_RECIPIENTS = 'dev-team@yourcompany.com'
     }
     
     // Pipeline options
@@ -197,6 +192,19 @@ pipeline {
                         
                         echo "✅ All post-deployment tests completed"
                     """
+                }
+            }
+        }
+
+        post {
+            always {
+                stage('🧹 Cleanup Docker') {
+                    steps {
+                        script {
+                            echo "🧹 Removing unused Docker resources..."
+                            sh 'docker system prune -af --volumes || true'
+                        }
+                    }
                 }
             }
         }
