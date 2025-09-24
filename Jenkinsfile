@@ -63,11 +63,6 @@ pipeline {
             description: 'Host port to expose the application'
         )
         booleanParam(
-            name: 'SKIP_TESTS',
-            defaultValue: false,
-            description: 'Skip running tests'
-        )
-        booleanParam(
             name: 'FORCE_DEPLOY',
             defaultValue: false,
             description: 'Force deployment even if tests fail'
@@ -101,6 +96,10 @@ pipeline {
                     echo "🏗️ Building OData Server application..."
                     
                     dir('server') {
+
+                        // Make gradlew executable
+                        sh 'chmod +x ../gradlew'
+
                         // Clean previous builds
                         sh '../gradlew clean'
                         
