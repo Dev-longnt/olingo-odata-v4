@@ -59,7 +59,7 @@ pipeline {
         )
         string(
             name: 'HOST_PORT',
-            defaultValue: '8080',
+            defaultValue: '8000',
             description: 'Host port to expose the application'
         )
     }
