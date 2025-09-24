@@ -158,7 +158,11 @@ pipeline {
                 success {
                     echo "✅ Deployment to ${params.DEPLOY_ENVIRONMENT} completed successfully"
                     echo "🧹 Removing unused Docker resources..."
-                    sh 'docker system prune -af --volumes || true'
+                    sh '''
+                        docker image prune -f
+                        docker volume prune -f
+                        docker network prune -f
+                    '''
                 }
                 failure {
                     echo "❌ Deployment to ${params.DEPLOY_ENVIRONMENT} failed"
