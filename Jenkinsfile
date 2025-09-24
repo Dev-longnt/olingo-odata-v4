@@ -62,11 +62,6 @@ pipeline {
             defaultValue: '8080',
             description: 'Host port to expose the application'
         )
-        booleanParam(
-            name: 'FORCE_DEPLOY',
-            defaultValue: false,
-            description: 'Force deployment even if tests fail'
-        )
     }
     
     stages {
@@ -124,9 +119,7 @@ pipeline {
                             docker build \\
                                 --build-arg JAR_FILE=build/libs/server-*.jar \\
                                 --build-arg SPRING_PROFILES_ACTIVE=${params.DEPLOY_ENVIRONMENT} \\
-                                -t ${DOCKER_IMAGE}:${DOCKER_TAG} \\
-                                -t ${DOCKER_IMAGE}:latest \\
-                                -t ${DOCKER_IMAGE}:${params.DEPLOY_ENVIRONMENT} .
+                                -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                         """
                         
                         // Inspect image size
@@ -154,13 +147,6 @@ pipeline {
         }
         
         stage('🚀 Deploy to Server') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                    expression { return params.FORCE_DEPLOY }
-                }
-            }
             steps {
                 script {
                     echo "🚀 Deploying to ${params.DEPLOY_ENVIRONMENT} environment on ${params.DEPLOY_HOST}..."
@@ -184,13 +170,6 @@ pipeline {
         }
         
         stage('🧪 Post-Deployment Tests') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                    expression { return params.FORCE_DEPLOY }
-                }
-            }
             steps {
                 script {
                     echo "🧪 Running post-deployment integration tests..."
