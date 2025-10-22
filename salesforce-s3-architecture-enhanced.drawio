@@ -1,0 +1,175 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" version="28.2.7">
+  <diagram name="Enhanced-Salesforce-S3-Architecture" id="enhanced-salesforce-s3-arch">
+    <mxGraphModel dx="1426" dy="766" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="aws-cloud" value="AWS Cloud" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="40" y="40" width="1320" height="820" as="geometry" />
+        </mxCell>
+        <mxCell id="waf" value="AWS WAF Web ACL" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#F58536;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.waf;" parent="1" vertex="1">
+          <mxGeometry x="152" y="200" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="api-gateway" value="API Gateway Private" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#FF4F8B;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.api_gateway;" parent="1" vertex="1">
+          <mxGeometry x="270" y="200" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc" value="Private VPC (10.0.0.0/16)" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#AAB7B8;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="360" y="120" width="800" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="private-subnet-1" value="Private Subnet 1 (10.0.1.0/24)" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="400" y="180" width="320" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="private-subnet-2" value="Private Subnet 2 (10.0.2.0/24)" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="760" y="180" width="320" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="ec2-1" value="EC2 OData Service" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ED7100;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.ec2_instance;" parent="1" vertex="1">
+          <mxGeometry x="440" y="240" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="ec2-2" value="EC2 OData Service" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ED7100;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.ec2_instance;" parent="1" vertex="1">
+          <mxGeometry x="800" y="240" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="alb" value="Application Load Balancer" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.application_load_balancer;" parent="1" vertex="1">
+          <mxGeometry x="620" y="200" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="nat-gateway" value="NAT Gateway" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#4AB29A;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.nat_gateway;" parent="1" vertex="1">
+          <mxGeometry x="620" y="320" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc-endpoints" value="VPC Endpoints" style="sketch=0;outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=11;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;strokeColor=#7AA116;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="400" y="420" width="680" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="s3-endpoint" value="S3 VPC Endpoint" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.vpc_endpoint;" parent="1" vertex="1">
+          <mxGeometry x="440" y="470" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="glue-endpoint" value="Glue VPC Endpoint" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.vpc_endpoint;" parent="1" vertex="1">
+          <mxGeometry x="560" y="470" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="athena-endpoint" value="Athena VPC Endpoint" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.vpc_endpoint;" parent="1" vertex="1">
+          <mxGeometry x="680" y="470" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="apigw-endpoint" value="API Gateway VPC Endpoint" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.vpc_endpoint;" parent="1" vertex="1">
+          <mxGeometry x="800" y="470" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="ssm-endpoint" value="SSM VPC Endpoint" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.vpc_endpoint;" parent="1" vertex="1">
+          <mxGeometry x="920" y="470" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="Amazon S3 Salesforce Archive" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.s3;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="200" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="glue" value="AWS Glue ETL Jobs" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.glue;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="300" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="athena" value="Amazon Athena Query Service" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.athena;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="400" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="lambda-auth" value="Lambda Authorizer" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ED7100;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.lambda;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="120" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="cognito" value="Amazon Cognito User Pool" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.cognito;" parent="1" vertex="1">
+          <mxGeometry x="1352" y="120" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="cloudwatch" value="CloudWatch Monitoring" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#759C3E;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.cloudwatch;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="500" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="salesforce" value="Salesforce External" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;fillColor=#277116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.generic_saml_token;" parent="1" vertex="1">
+          <mxGeometry x="40" y="200" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-to-waf" style="endArrow=classic;html=1;rounded=0;strokeColor=#FF6B35;strokeWidth=3;" parent="1" source="salesforce" target="waf" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="waf-to-apigw" style="endArrow=classic;html=1;rounded=0;strokeColor=#FF6B35;strokeWidth=3;" parent="1" source="waf" target="api-gateway" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="apigw-to-endpoint" style="endArrow=classic;html=1;rounded=0;strokeColor=#FF4F8B;strokeWidth=3;" parent="1" source="api-gateway" target="apigw-endpoint" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="endpoint-to-alb" style="endArrow=classic;html=1;rounded=0;strokeColor=#FF4F8B;strokeWidth=3;" parent="1" source="apigw-endpoint" target="alb" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="apigw-to-lambda" style="endArrow=classic;html=1;rounded=0;strokeColor=#ED7100;strokeWidth=2;dashed=1;" parent="1" source="api-gateway" target="lambda-auth" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lambda-to-cognito" style="endArrow=classic;html=1;rounded=0;strokeColor=#DD344C;strokeWidth=2;dashed=1;" parent="1" source="lambda-auth" target="cognito" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="alb-to-ec2-1" style="endArrow=classic;html=1;rounded=0;strokeColor=#1BA1E2;strokeWidth=2;" parent="1" source="alb" target="ec2-1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="alb-to-ec2-2" style="endArrow=classic;html=1;rounded=0;strokeColor=#1BA1E2;strokeWidth=2;" parent="1" source="alb" target="ec2-2" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ec2-to-s3-endpoint" style="endArrow=classic;html=1;rounded=0;strokeColor=#7AA116;strokeWidth=2;" parent="1" source="ec2-1" target="s3-endpoint" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3-endpoint-to-s3" style="endArrow=classic;html=1;rounded=0;strokeColor=#7AA116;strokeWidth=2;" parent="1" source="s3-endpoint" target="s3" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="glue-endpoint-to-glue" style="endArrow=classic;html=1;rounded=0;strokeColor=#8C4FFF;strokeWidth=2;" parent="1" source="glue-endpoint" target="glue" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="athena-endpoint-to-athena" style="endArrow=classic;html=1;rounded=0;strokeColor=#8C4FFF;strokeWidth=2;" parent="1" source="athena-endpoint" target="athena" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3-to-glue" style="endArrow=classic;html=1;rounded=0;strokeColor=#8C4FFF;strokeWidth=2;" parent="1" source="s3" target="glue" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="glue-to-athena" style="endArrow=classic;html=1;rounded=0;strokeColor=#8C4FFF;strokeWidth=2;" parent="1" source="glue" target="athena" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="450" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="data-flow-label" value="Data Flow: Salesforce → WAF → API Gateway → VPC → ALB → EC2 → S3 → Glue → Athena" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#FF6B35;" parent="1" vertex="1">
+          <mxGeometry x="200" y="780" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="security-label" value="Maximum Security: WAF + API Gateway + Private VPC + VPC Endpoints + Lambda Authorizer + Cognito" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#147EBA;" parent="1" vertex="1">
+          <mxGeometry x="200" y="810" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="security-features" value="Enhanced Security Features: AWS WAF - DDoS Protection, SQL Injection, XSS; API Gateway - Rate Limiting, Throttling, API Keys; Lambda Authorizer - Custom JWT/OAuth Authentication; Amazon Cognito - User Pool and Identity Management; Private VPC - Complete Network Isolation; VPC Endpoints - Zero Internet Traffic; Security Groups - Micro-segmentation; CloudWatch - Real-time Monitoring and Alerts" style="text;html=1;strokeColor=#F58536;fillColor=#FFF2CC;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10;fontStyle=0;fontColor=#232F3E;spacing=5;" parent="1" vertex="1">
+          <mxGeometry x="40" y="580" width="300" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="waf-rules" value="WAF Protection Rules: Rate-based rules (DDoS); SQL injection protection; Cross-site scripting (XSS); IP reputation lists; Geographic blocking; Custom rule sets; Bot control; OWASP Top 10" style="text;html=1;strokeColor=#DD344C;fillColor=#FFE6E6;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10;fontStyle=0;fontColor=#232F3E;spacing=5;" parent="1" vertex="1">
+          <mxGeometry x="1070" y="600" width="200" height="160" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
